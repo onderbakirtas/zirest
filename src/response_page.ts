@@ -76,24 +76,18 @@ export default function createResponsePage(): ResponsePage {
   bodyScrolled.set_child(bodyView);
 
   const headersBuffer = new Gtk.TextBuffer();
-  const headersView = new Gtk.TextView({
-    buffer: headersBuffer,
-    editable: false,
-    monospace: true,
-    wrap_mode: Gtk.WrapMode.WORD_CHAR,
-    hexpand: true,
-    vexpand: true,
-    left_margin: 12,
-    right_margin: 12,
-    top_margin: 12,
-    bottom_margin: 12,
+
+  const headersList = new Gtk.ListBox({
+    css_classes: ["boxed-list"],
   });
+  headersList.selection_mode = Gtk.SelectionMode.NONE;
+
   const headersScrolled = new Gtk.ScrolledWindow({
     hexpand: true,
     vexpand: true,
   });
   headersScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  headersScrolled.set_child(headersView);
+  headersScrolled.set_child(headersList);
 
   const viewStack = new Adw.ViewStack();
   viewStack.hexpand = true;
@@ -101,6 +95,14 @@ export default function createResponsePage(): ResponsePage {
   viewStack.add_titled(bodyScrolled, "body", "Body");
   viewStack.add_titled(headersScrolled, "headers", "Headers");
   viewStack.visible_child_name = "body";
+
+  try {
+    const bodyPage = (viewStack as any).get_page?.(bodyScrolled);
+    const headersPage = (viewStack as any).get_page?.(headersScrolled);
+    if (bodyPage) bodyPage.icon_name = null;
+    if (headersPage) headersPage.icon_name = null;
+  } catch {
+  }
 
   const switcher = new Adw.ViewSwitcher({ stack: viewStack });
 
@@ -233,12 +235,44 @@ export default function createResponsePage(): ResponsePage {
   };
 
   const setHeaders = (headers: Record<string, string>) => {
-    const lines: string[] = [];
-    for (const k of Object.keys(headers)) {
-      lines.push(`${k}: ${headers[k]}`);
+    while (true) {
+      const child = headersList.get_first_child();
+      if (!child) break;
+      headersList.remove(child);
     }
-    lines.sort((a, b) => a.localeCompare(b));
-    headersBuffer.set_text(lines.join("\n"), -1);
+
+    const keys = Object.keys(headers).sort((a, b) => a.localeCompare(b));
+    for (const k of keys) {
+      const row = new Gtk.ListBoxRow();
+      row.selectable = false;
+      row.activatable = false;
+
+      const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+        margin_top: 10,
+        margin_bottom: 10,
+        margin_start: 12,
+        margin_end: 12,
+      });
+
+      const keyLabel = new Gtk.Label({ label: k, xalign: 0 });
+      keyLabel.css_classes = ["dim-label"];
+
+      const valueLabel = new Gtk.Label({
+        label: String(headers[k] ?? ""),
+        xalign: 0,
+        wrap: true,
+        wrap_mode: Pango.WrapMode.WORD_CHAR,
+        selectable: true,
+      });
+
+      box.append(keyLabel);
+      box.append(valueLabel);
+
+      row.set_child(box);
+      headersList.append(row);
+    }
   };
 
   return {
