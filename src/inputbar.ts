@@ -9,7 +9,8 @@ export default function createInputBar(options: InputBarOptions = {}) {
     orientation: Gtk.Orientation.HORIZONTAL,
     hexpand: true,
     halign: Gtk.Align.FILL,
-    spacing: 6,
+    spacing: 2,
+    css_classes: ["linked"],
   });
 
   const crudDropDown = Gtk.DropDown.new_from_strings([
@@ -19,7 +20,6 @@ export default function createInputBar(options: InputBarOptions = {}) {
     "PATCH",
     "DELETE",
   ]);
-  crudDropDown.valign = Gtk.Align.CENTER;
 
   const entry = new Gtk.Entry({
     hexpand: true,
@@ -32,7 +32,6 @@ export default function createInputBar(options: InputBarOptions = {}) {
     label: "Send",
     css_classes: ["suggested-action"],
   });
-  actionButton.valign = Gtk.Align.CENTER;
 
   const getSelectedMethod = () => {
     const item = crudDropDown.get_selected_item();
