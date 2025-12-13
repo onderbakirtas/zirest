@@ -4,6 +4,7 @@ export type InputBar = {
   widget: Gtk.Widget;
   setRequest: (method: string, url: string) => void;
   getRequest: () => { method: string; url: string };
+  setUrl: (url: string) => void;
 };
 
 type InputBarOptions = {
@@ -115,5 +116,6 @@ export default function createInputBar(options: InputBarOptions = {}) {
       }
     },
     getRequest: () => ({ method: getSelectedMethod(), url: String(getUrl() ?? "") }),
+    setUrl: (url: string) => setUrl(String(url ?? "")),
   } satisfies InputBar;
 }

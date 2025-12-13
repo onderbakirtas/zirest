@@ -130,7 +130,57 @@ const onActivate = (app: Adw.Application) => {
   })
 
   const responsePage = createResponsePage();
-  const requestBodyPanel = createRequestBodyPanel();
+  const appendQueryParams = (
+    baseUrl: string,
+    params?: Array<{ key: string; value: string }>,
+  ): string => {
+    const pairs = (params ?? []).filter((p) => String(p.key ?? "").trim().length > 0);
+    if (!pairs.length) return String(baseUrl ?? "");
+
+    const raw = String(baseUrl ?? "");
+    const hashSplit = raw.split("#");
+    const beforeHash = hashSplit[0];
+    const hash = hashSplit.length > 1 ? `#${hashSplit.slice(1).join("#")}` : "";
+    const qSplit = beforeHash.split("?");
+    const base = qSplit[0];
+    const existing = qSplit.length > 1 ? qSplit.slice(1).join("?") : "";
+
+    const extra = pairs
+      .map((p) => {
+        const k = encodeURIComponent(String(p.key ?? "").trim());
+        const v = encodeURIComponent(String(p.value ?? ""));
+        return `${k}=${v}`;
+      })
+      .join("&");
+
+    const query = [existing, extra].filter(Boolean).join("&");
+    return `${base}?${query}${hash}`;
+  };
+
+  let inputBar: ReturnType<typeof createInputBar> | null = null;
+  let updatingUrlFromQuery = false;
+
+  const requestBodyPanel = createRequestBodyPanel({
+    onQueryParamsChanged: (params) => {
+      const ib = inputBar;
+      if (!ib) return;
+      const current = ib.getRequest().url;
+
+      // If user is actively editing URL and query tab also updates it, avoid infinite churn.
+      if (updatingUrlFromQuery) return;
+
+      // Strip current query string to get the base.
+      const base = String(current ?? "").split("?")[0];
+      const nextUrl = appendQueryParams(base, params);
+      if (String(nextUrl) === String(current ?? "")) return;
+      updatingUrlFromQuery = true;
+      try {
+        ib.setUrl(nextUrl);
+      } finally {
+        updatingUrlFromQuery = false;
+      }
+    },
+  });
 
   const placeholder = new Gtk.Box({
     orientation: Gtk.Orientation.VERTICAL,
@@ -246,7 +296,8 @@ const onActivate = (app: Adw.Application) => {
       selectBtn.set_child(textBox);
 
       selectBtn.connect("clicked", () => {
-        inputBar.setRequest(item.method, item.url);
+        const ib = inputBar;
+        if (ib) ib.setRequest(item.method, item.url);
         historyPopover.popdown();
       });
 
@@ -275,24 +326,31 @@ const onActivate = (app: Adw.Application) => {
     renderHistory();
   });
 
-  const inputBar = createInputBar({
+  inputBar = createInputBar({
     onSend: (method, url) => {
-      historyItems = addRequestHistoryItem({ method, url });
+      const sendOptions = requestBodyPanel.getSendOptions();
+      const finalUrl = appendQueryParams(url, sendOptions.queryParams);
+
+      historyItems = addRequestHistoryItem({ method, url: finalUrl });
       renderHistory();
 
-      const sendOptions = requestBodyPanel.getSendOptions();
       const headers: Record<string, string> = {};
       if (sendOptions.contentType) headers["Content-Type"] = sendOptions.contentType;
+      for (const h of sendOptions.headers ?? []) {
+        const k = String(h.key ?? "").trim();
+        if (!k) continue;
+        headers[k] = String(h.value ?? "");
+      }
 
       void (async () => {
         showResponse();
 
         responsePage.setMeta({ status: "…", statusText: "Loading" });
         responsePage.setHeaders({});
-        responsePage.setText("Loading...\n" + method + " " + url);
+        responsePage.setText("Loading...\n" + method + " " + finalUrl);
 
         try {
-          const res = await httpRequest(url, {
+          const res = await httpRequest(finalUrl, {
             method,
             headers: Object.keys(headers).length ? headers : undefined,
             body: sendOptions.body,
@@ -338,7 +396,8 @@ const onActivate = (app: Adw.Application) => {
     return GLib.SOURCE_REMOVE;
   });
 
-  root.append(inputBar.widget);
+  const ib = inputBar;
+  if (ib) root.append(ib.widget);
   root.append(split);
 
   const view = new Adw.ToolbarView();

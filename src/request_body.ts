@@ -6,10 +6,19 @@ import GtkSource from "gi://GtkSource?version=5";
 
 export type RequestBodyPanel = {
   widget: Gtk.Widget;
-  getSendOptions: () => { body?: string; contentType?: string };
+  getSendOptions: () => {
+    body?: string;
+    contentType?: string;
+    queryParams?: Array<{ key: string; value: string }>;
+    headers?: Array<{ key: string; value: string }>;
+  };
 };
 
-export default function createRequestBodyPanel(): RequestBodyPanel {
+type RequestBodyPanelOptions = {
+  onQueryParamsChanged?: (params: Array<{ key: string; value: string }>) => void;
+};
+
+export default function createRequestBodyPanel(options: RequestBodyPanelOptions = {}): RequestBodyPanel {
   const root = new Gtk.Box({
     orientation: Gtk.Orientation.VERTICAL,
     spacing: 6,
@@ -49,7 +58,16 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
 
   headerRow.append(title);
   headerRow.append(modeSwitchBox);
-  root.append(headerRow);
+
+  const notebook = new Gtk.Notebook({
+    hexpand: true,
+    vexpand: true,
+  });
+  try {
+    notebook.show_border = false;
+  } catch {
+  }
+  root.append(notebook);
 
   const languageManager = (GtkSource as any).LanguageManager?.get_default?.();
   const jsonLanguage = languageManager ? languageManager.get_language?.("json") : null;
@@ -107,6 +125,8 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     (view as any).indent_width = 2;
     (view as any).insert_spaces_instead_of_tabs = true;
     (view as any).auto_indent = true;
+    (view as any).show_right_margin = false;
+    (view as any).overwrite = false;
   } catch {
   }
 
@@ -181,7 +201,144 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
 
   scrolled.set_child(view);
 
-  root.append(scrolled);
+  const bodyPage = new Gtk.Box({
+    orientation: Gtk.Orientation.VERTICAL,
+    spacing: 6,
+    hexpand: true,
+    vexpand: true,
+  });
+  bodyPage.append(headerRow);
+  bodyPage.append(scrolled);
+  notebook.append_page(bodyPage, new Gtk.Label({ label: "Body" }));
+
+  const createKeyValueEditorPage = (opts: {
+    tabLabel: string;
+    addLabel: string;
+    keyPlaceholder: string;
+    valuePlaceholder: string;
+    onChanged?: (pairs: Array<{ key: string; value: string }>) => void;
+  }) => {
+    const list = new Gtk.ListBox();
+    list.selection_mode = Gtk.SelectionMode.NONE;
+
+    const sc = new Gtk.ScrolledWindow({
+      hexpand: true,
+      vexpand: true,
+    });
+    sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
+    sc.set_child(list);
+
+    const getPairs = () => {
+      const pairs: Array<{ key: string; value: string }> = [];
+      let child: any = list.get_first_child();
+      while (child) {
+        const row: any = child;
+        const kEntry: any = row._keyEntry;
+        const vEntry: any = row._valueEntry;
+        const key = kEntry?.get_text ? String(kEntry.get_text() ?? "") : String(kEntry?.text ?? "");
+        const value = vEntry?.get_text ? String(vEntry.get_text() ?? "") : String(vEntry?.text ?? "");
+        if (key.trim()) pairs.push({ key: key.trim(), value: String(value ?? "") });
+        child = child.get_next_sibling?.() ?? null;
+      }
+      return pairs;
+    };
+
+    const notifyChanged = () => {
+      try {
+        opts.onChanged?.(getPairs());
+      } catch {
+      }
+    };
+
+    const addRow = () => {
+      const row = new Gtk.ListBoxRow();
+      row.selectable = false;
+      row.activatable = false;
+
+      const rowBox = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 6,
+        margin_top: 8,
+        margin_bottom: 8,
+        margin_start: 8,
+        margin_end: 8,
+      });
+
+      const keyEntry = new Gtk.Entry({
+        placeholder_text: opts.keyPlaceholder,
+      });
+      keyEntry.hexpand = true;
+
+      const valueEntry = new Gtk.Entry({
+        placeholder_text: opts.valuePlaceholder,
+      });
+      valueEntry.hexpand = true;
+
+      const removeBtn = new Gtk.Button({
+        css_classes: ["flat"],
+        icon_name: "window-close-symbolic",
+      });
+      removeBtn.valign = Gtk.Align.CENTER;
+      removeBtn.connect("clicked", () => {
+        try {
+          list.remove(row);
+        } catch {
+        }
+        notifyChanged();
+      });
+
+      (row as any)._keyEntry = keyEntry;
+      (row as any)._valueEntry = valueEntry;
+
+      keyEntry.connect("changed", notifyChanged);
+      valueEntry.connect("changed", notifyChanged);
+
+      rowBox.append(keyEntry);
+      rowBox.append(valueEntry);
+      rowBox.append(removeBtn);
+      row.set_child(rowBox);
+      list.append(row);
+
+      notifyChanged();
+    };
+
+    const addBtn = new Gtk.Button({
+      label: opts.addLabel,
+    });
+    addBtn.css_classes = ["flat"];
+    addBtn.halign = Gtk.Align.START;
+    addBtn.connect("clicked", addRow);
+
+    const page = new Gtk.Box({
+      orientation: Gtk.Orientation.VERTICAL,
+      spacing: 6,
+      hexpand: true,
+      vexpand: true,
+    });
+    page.append(sc);
+    page.append(addBtn);
+
+    addRow();
+
+    notebook.append_page(page, new Gtk.Label({ label: opts.tabLabel }));
+
+    return { getPairs };
+  };
+
+  const queryEditor = createKeyValueEditorPage({
+    tabLabel: "Query",
+    addLabel: "Add Query Param",
+    keyPlaceholder: "Key",
+    valuePlaceholder: "Value",
+    onChanged: options.onQueryParamsChanged,
+  });
+
+  const headerEditor = createKeyValueEditorPage({
+    tabLabel: "Header",
+    addLabel: "Add Header",
+    keyPlaceholder: "Header",
+    valuePlaceholder: "Value",
+  });
 
   const getText = () => {
     const anyBuffer = buffer as any;
@@ -219,9 +376,22 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     widget: root,
     getSendOptions: () => {
       const body = String(getText() ?? "");
-      if (!body.trim()) return {};
-      if (mode === "json") return { body, contentType: "application/json" };
-      return { body };
+      const opts: {
+        body?: string;
+        contentType?: string;
+        queryParams?: Array<{ key: string; value: string }>;
+        headers?: Array<{ key: string; value: string }>;
+      } = {};
+
+      if (body.trim()) {
+        opts.body = body;
+        if (mode === "json") opts.contentType = "application/json";
+      }
+
+      opts.queryParams = queryEditor.getPairs();
+      opts.headers = headerEditor.getPairs();
+
+      return opts;
     },
   } satisfies RequestBodyPanel;
 }
