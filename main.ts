@@ -9,6 +9,7 @@ import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
 import createInputBar from "./src/inputbar";
 import createResponsePage from "./src/response_page";
+import createRequestBodyPanel from "./src/request_body";
 import { httpRequest } from "./src/http";
 import {
   addRequestHistoryItem,
@@ -128,6 +129,7 @@ const onActivate = (app: Adw.Application) => {
   })
 
   const responsePage = createResponsePage();
+  const requestBodyPanel = createRequestBodyPanel();
 
   const placeholder = new Gtk.Box({
     orientation: Gtk.Orientation.VERTICAL,
@@ -277,6 +279,10 @@ const onActivate = (app: Adw.Application) => {
       historyItems = addRequestHistoryItem({ method, url });
       renderHistory();
 
+      const sendOptions = requestBodyPanel.getSendOptions();
+      const headers: Record<string, string> = {};
+      if (sendOptions.contentType) headers["Content-Type"] = sendOptions.contentType;
+
       void (async () => {
         showResponse();
 
@@ -285,7 +291,11 @@ const onActivate = (app: Adw.Application) => {
         responsePage.setText("Loading...\n" + method + " " + url);
 
         try {
-          const res = await httpRequest(url, { method });
+          const res = await httpRequest(url, {
+            method,
+            headers: Object.keys(headers).length ? headers : undefined,
+            body: sendOptions.body,
+          });
           const text = await res.text();
 
           responsePage.setMeta({
@@ -312,8 +322,20 @@ const onActivate = (app: Adw.Application) => {
 
   renderHistory();
 
+  const split = new Gtk.Paned({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    hexpand: true,
+    vexpand: true,
+  });
+  split.set_start_child(requestBodyPanel.widget);
+  split.set_end_child(contentStack);
+  try {
+    split.set_position(280);
+  } catch {
+  }
+
   root.append(inputBar.widget);
-  root.append(contentStack);
+  root.append(split);
 
   const view = new Adw.ToolbarView();
   view.add_top_bar(header);
