@@ -20,7 +20,42 @@ export default function createInputBar(options: InputBarOptions = {}) {
   });
 
   const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-  const crudDropDown = Gtk.DropDown.new_from_strings(methods);
+  let selectedMethod = methods[0];
+
+  const methodLabel = new Gtk.Label({ label: selectedMethod });
+  const methodButton = new Gtk.MenuButton({
+    child: methodLabel,
+  });
+
+  const methodPopover = new Gtk.Popover();
+  methodButton.set_popover(methodPopover);
+
+  const methodList = new Gtk.ListBox();
+  methodList.selection_mode = Gtk.SelectionMode.NONE;
+
+  for (const m of methods) {
+    const row = new Gtk.ListBoxRow();
+    row.selectable = false;
+    row.activatable = false;
+
+    const btn = new Gtk.Button({
+      label: m,
+      css_classes: ["flat"],
+    });
+    btn.halign = Gtk.Align.FILL;
+    btn.hexpand = true;
+
+    btn.connect("clicked", () => {
+      selectedMethod = m;
+      methodLabel.label = m;
+      methodPopover.popdown();
+    });
+
+    row.set_child(btn);
+    methodList.append(row);
+  }
+
+  methodPopover.set_child(methodList);
 
   const entry = new Gtk.Entry({
     hexpand: true,
@@ -35,12 +70,7 @@ export default function createInputBar(options: InputBarOptions = {}) {
   });
 
   const getSelectedMethod = () => {
-    const item = crudDropDown.get_selected_item();
-    if (!item) return "GET";
-    const anyItem = item as any;
-    if (typeof anyItem.get_string === "function") return anyItem.get_string();
-    if (typeof anyItem.string === "string") return anyItem.string;
-    return String(anyItem);
+    return String(selectedMethod ?? "GET");
   };
 
   const getUrl = () => {
@@ -56,8 +86,10 @@ export default function createInputBar(options: InputBarOptions = {}) {
 
   const setMethod = (method: string) => {
     const m = String(method ?? "GET").toUpperCase();
-    const idx = methods.indexOf(m);
-    if (idx >= 0) crudDropDown.set_selected(idx);
+    if (methods.includes(m)) {
+      selectedMethod = m;
+      methodLabel.label = m;
+    }
   };
 
   const triggerSend = () => {
@@ -68,7 +100,7 @@ export default function createInputBar(options: InputBarOptions = {}) {
   actionButton.connect("clicked", triggerSend);
   entry.connect("activate", triggerSend);
 
-  box.append(crudDropDown);
+  box.append(methodButton);
   box.append(entry);
   box.append(actionButton);
 

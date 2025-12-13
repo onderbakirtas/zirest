@@ -89,8 +89,75 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   const keyController = new Gtk.EventControllerKey();
   keyController.connect("key-pressed", (_c: any, keyval: number, _keycode: number, state: number) => {
     if (keyval === (Gdk as any).KEY_Tab && !(state & (Gdk as any).ModifierType.SHIFT_MASK)) {
+      const anyBuffer = buffer as any;
+
+      try {
+        const sel = anyBuffer.get_selection_bounds?.();
+        if (sel && sel[0]) {
+          // Keep it simple: if there is a selection, don't try to transform it.
+          const selStart = sel[1];
+          buffer.delete(selStart, sel[2]);
+          buffer.insert(selStart, "  ", -1);
+          return true;
+        }
+      } catch {
+      }
+
       const insertMark = buffer.get_insert();
-      const iter = (buffer as any).get_iter_at_mark(insertMark);
+      const iter = anyBuffer.get_iter_at_mark(insertMark);
+
+      if (mode === "json") {
+        try {
+          const wordEnd = iter.copy();
+          const wordStart = iter.copy();
+
+          // Walk backwards to find an identifier token directly before the cursor.
+          while (true) {
+            const prev = wordStart.copy();
+            if (!prev.backward_char?.()) break;
+            const ch = String(prev.get_char?.() ?? "");
+            if (!/^[A-Za-z0-9_]$/.test(ch)) break;
+            wordStart.backward_char?.();
+          }
+
+          // If we didn't move, there is no token.
+          if (wordStart.equal?.(wordEnd)) {
+            buffer.insert(iter, "  ", -1);
+            return true;
+          }
+
+          const token = String(anyBuffer.get_text(wordStart, wordEnd, true) ?? "");
+          if (!token || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
+            buffer.insert(iter, "  ", -1);
+            return true;
+          }
+
+          // If it's already quoted, don't touch.
+          const before = wordStart.copy();
+          if (before.backward_char?.()) {
+            const bch = String(before.get_char?.() ?? "");
+            if (bch === '"') {
+              buffer.insert(iter, "  ", -1);
+              return true;
+            }
+          }
+
+          // If ':' is already next, don't transform.
+          const after = wordEnd.copy();
+          const ach = String(after.get_char?.() ?? "");
+          if (ach === ":") {
+            buffer.insert(iter, "  ", -1);
+            return true;
+          }
+
+          buffer.delete(wordStart, wordEnd);
+          buffer.insert(wordStart, `"${token}": `, -1);
+          return true;
+        } catch {
+          // fall through
+        }
+      }
+
       buffer.insert(iter, "  ", -1);
       return true;
     }

@@ -329,10 +329,13 @@ const onActivate = (app: Adw.Application) => {
   });
   split.set_start_child(requestBodyPanel.widget);
   split.set_end_child(contentStack);
-  try {
-    split.set_position(280);
-  } catch {
-  }
+  GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+    try {
+      split.set_position(280);
+    } catch {
+    }
+    return GLib.SOURCE_REMOVE;
+  });
 
   root.append(inputBar.widget);
   root.append(split);
