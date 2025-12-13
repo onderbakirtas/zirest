@@ -57,6 +57,7 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   root.append(headerRow);
 
   const buffer = new Gtk.TextBuffer();
+  const lineNumbersBuffer = new Gtk.TextBuffer();
   const tagTable = buffer.get_tag_table();
 
   const tagPunctuation = new Gtk.TextTag({ name: "punctuation", foreground: COLORS.punctuation });
@@ -72,6 +73,31 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   tagTable.add(tagNumber);
   tagTable.add(tagBoolean);
   tagTable.add(tagNull);
+
+  const lineNumbersView = new Gtk.TextView({
+    buffer: lineNumbersBuffer,
+    editable: false,
+    cursor_visible: false,
+    monospace: true,
+    wrap_mode: Gtk.WrapMode.NONE,
+    hexpand: false,
+    vexpand: true,
+    left_margin: 8,
+    right_margin: 8,
+    top_margin: 12,
+    bottom_margin: 12,
+    justification: Gtk.Justification.RIGHT,
+  });
+  lineNumbersView.css_classes = ["dim-label"];
+  try {
+    (lineNumbersView as any).focusable = false;
+    (lineNumbersView as any).can_focus = false;
+  } catch {
+  }
+  try {
+    (lineNumbersView as any).set_size_request?.(44, -1);
+  } catch {
+  }
 
   const view = new Gtk.TextView({
     buffer,
@@ -239,7 +265,16 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     vexpand: true,
   });
   scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  scrolled.set_child(view);
+
+  const editorRow = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 0,
+    hexpand: true,
+    vexpand: true,
+  });
+  editorRow.append(lineNumbersView);
+  editorRow.append(view);
+  scrolled.set_child(editorRow);
 
   root.append(scrolled);
 
@@ -250,6 +285,18 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
       (buffer as any).remove_all_tags(fullStart, fullEnd);
     } catch {
     }
+  };
+
+  const updateLineNumbers = () => {
+    let lines = 1;
+    try {
+      lines = Math.max(1, (buffer as any).get_line_count?.() ?? 1);
+    } catch {
+      lines = 1;
+    }
+    let out = "";
+    for (let i = 1; i <= lines; i++) out += `${i}\n`;
+    lineNumbersBuffer.set_text(out, -1);
   };
 
   const iterAt = (offset: number) => (buffer as any).get_iter_at_offset(offset);
@@ -319,9 +366,9 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   };
 
   buffer.connect("changed", () => {
-    if (mode !== "json") return;
     GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-      rehighlight();
+      updateLineNumbers();
+      if (mode === "json") rehighlight();
       return GLib.SOURCE_REMOVE;
     });
   });
@@ -332,6 +379,7 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     rawBtn.active = next === "raw";
     jsonBtn.active = next === "json";
     updatingMode = false;
+    updateLineNumbers();
     rehighlight();
   };
 

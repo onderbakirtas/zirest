@@ -41,6 +41,7 @@ export default function createResponsePage(): ResponsePage {
   });
 
   const bodyBuffer = new Gtk.TextBuffer();
+  const bodyLineNumbersBuffer = new Gtk.TextBuffer();
   const bodyTagTable = bodyBuffer.get_tag_table();
   const tagPunctuation = new Gtk.TextTag({ name: "punctuation", foreground: COLORS.punctuation });
   const tagKey = new Gtk.TextTag({ name: "key", foreground: COLORS.key });
@@ -54,6 +55,31 @@ export default function createResponsePage(): ResponsePage {
   bodyTagTable.add(tagNumber);
   bodyTagTable.add(tagBoolean);
   bodyTagTable.add(tagNull);
+
+  const bodyLineNumbersView = new Gtk.TextView({
+    buffer: bodyLineNumbersBuffer,
+    editable: false,
+    cursor_visible: false,
+    monospace: true,
+    wrap_mode: Gtk.WrapMode.NONE,
+    hexpand: false,
+    vexpand: true,
+    left_margin: 8,
+    right_margin: 8,
+    top_margin: 12,
+    bottom_margin: 12,
+    justification: Gtk.Justification.RIGHT,
+  });
+  bodyLineNumbersView.css_classes = ["dim-label"];
+  try {
+    (bodyLineNumbersView as any).focusable = false;
+    (bodyLineNumbersView as any).can_focus = false;
+  } catch {
+  }
+  try {
+    (bodyLineNumbersView as any).set_size_request?.(44, -1);
+  } catch {
+  }
 
   const bodyView = new Gtk.TextView({
     buffer: bodyBuffer,
@@ -72,9 +98,16 @@ export default function createResponsePage(): ResponsePage {
     vexpand: true,
   });
   bodyScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  bodyScrolled.set_child(bodyView);
 
-  const headersBuffer = new Gtk.TextBuffer();
+  const bodyRow = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 0,
+    hexpand: true,
+    vexpand: true,
+  });
+  bodyRow.append(bodyLineNumbersView);
+  bodyRow.append(bodyView);
+  bodyScrolled.set_child(bodyRow);
 
   const headersList = new Gtk.ListBox({
     css_classes: ["boxed-list"],
@@ -174,8 +207,21 @@ export default function createResponsePage(): ResponsePage {
   root.append(tabRow);
   root.append(notebook);
 
+  const updateBodyLineNumbers = () => {
+    let lines = 1;
+    try {
+      lines = Math.max(1, (bodyBuffer as any).get_line_count?.() ?? 1);
+    } catch {
+      lines = 1;
+    }
+    let out = "";
+    for (let i = 1; i <= lines; i++) out += `${i}\n`;
+    bodyLineNumbersBuffer.set_text(out, -1);
+  };
+
   const applyJsonHighlight = (text: string) => {
     bodyBuffer.set_text(text, -1);
+    updateBodyLineNumbers();
 
     const fullStart = bodyBuffer.get_start_iter();
     const fullEnd = bodyBuffer.get_end_iter();
