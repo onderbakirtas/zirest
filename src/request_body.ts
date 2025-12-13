@@ -34,19 +34,21 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   let updatingMode = false;
   let mode: "raw" | "json" = "raw";
 
-  const rawBtn = new Gtk.ToggleButton({ label: "Raw" });
-  const jsonBtn = new Gtk.ToggleButton({ label: "JSON" });
+  const rawLabel = new Gtk.Label({ label: "Raw" });
+  rawLabel.css_classes = ["dim-label"];
+  const modeSwitch = new Gtk.Switch({ active: false });
 
-  const modeButtons = new Gtk.Box({
+  const modeSwitchBox = new Gtk.Box({
     orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 0,
-    css_classes: ["linked"],
+    spacing: 6,
+    halign: Gtk.Align.END,
+    valign: Gtk.Align.CENTER,
   });
-  modeButtons.append(rawBtn);
-  modeButtons.append(jsonBtn);
+  modeSwitchBox.append(rawLabel);
+  modeSwitchBox.append(modeSwitch);
 
   headerRow.append(title);
-  headerRow.append(modeButtons);
+  headerRow.append(modeSwitchBox);
   root.append(headerRow);
 
   const languageManager = (GtkSource as any).LanguageManager?.get_default?.();
@@ -191,8 +193,7 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   const setMode = (next: "raw" | "json") => {
     updatingMode = true;
     mode = next;
-    rawBtn.active = next === "raw";
-    jsonBtn.active = next === "json";
+    modeSwitch.active = next === "raw";
     updatingMode = false;
 
     try {
@@ -207,18 +208,12 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     }
   };
 
-  rawBtn.connect("toggled", () => {
+  modeSwitch.connect("notify::active", () => {
     if (updatingMode) return;
-    if (rawBtn.active) setMode("raw");
-    else rawBtn.active = true;
-  });
-  jsonBtn.connect("toggled", () => {
-    if (updatingMode) return;
-    if (jsonBtn.active) setMode("json");
-    else jsonBtn.active = true;
+    setMode(modeSwitch.active ? "raw" : "json");
   });
 
-  setMode("raw");
+  setMode("json");
 
   return {
     widget: root,
