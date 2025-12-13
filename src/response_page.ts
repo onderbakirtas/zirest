@@ -9,6 +9,9 @@ type ResponsePage = {
   setText: (text: string) => void;
   setJson: (value: unknown) => void;
   setError: (message: string) => void;
+  setViewMode: (mode: "tree" | "raw") => void;
+  getViewMode: () => "tree" | "raw";
+  copyRawToClipboard: () => void;
 };
 
 const COLORS = {
@@ -59,7 +62,24 @@ export default function createResponsePage(): ResponsePage {
   stack.hexpand = true;
   stack.vexpand = true;
 
+  let viewMode: "tree" | "raw" = "tree";
+  let rawText = "";
+
   const textBuffer = new Gtk.TextBuffer();
+  const tagTable = textBuffer.get_tag_table();
+  const tagPunctuation = new Gtk.TextTag({ name: "punctuation", foreground: COLORS.punctuation });
+  const tagKey = new Gtk.TextTag({ name: "key", foreground: COLORS.key });
+  const tagString = new Gtk.TextTag({ name: "string", foreground: COLORS.string });
+  const tagNumber = new Gtk.TextTag({ name: "number", foreground: COLORS.number });
+  const tagBoolean = new Gtk.TextTag({ name: "boolean", foreground: COLORS.boolean });
+  const tagNull = new Gtk.TextTag({ name: "null", foreground: COLORS.null });
+  tagTable.add(tagPunctuation);
+  tagTable.add(tagKey);
+  tagTable.add(tagString);
+  tagTable.add(tagNumber);
+  tagTable.add(tagBoolean);
+  tagTable.add(tagNull);
+
   const textView = new Gtk.TextView({
     buffer: textBuffer,
     editable: false,
@@ -208,16 +228,98 @@ export default function createResponsePage(): ResponsePage {
 
   stack.add_named(textScrolled, "text");
   stack.add_named(treeScrolled, "tree");
-  stack.visible_child_name = "text";
+
+  const applyJsonHighlight = (text: string) => {
+    textBuffer.set_text(text, -1);
+
+    const fullStart = textBuffer.get_start_iter();
+    const fullEnd = textBuffer.get_end_iter();
+    try {
+      (textBuffer as any).remove_all_tags(fullStart, fullEnd);
+    } catch {
+    }
+
+    const stringRanges: Array<{ start: number; end: number }> = [];
+    const reString = /\"(?:\\.|[^\"\\])*\"/g;
+    for (let m = reString.exec(text); m; m = reString.exec(text)) {
+      stringRanges.push({ start: m.index, end: m.index + m[0].length });
+    }
+    const inString = (pos: number) => {
+      for (const r of stringRanges) {
+        if (pos >= r.start && pos < r.end) return true;
+      }
+      return false;
+    };
+
+    const iterAt = (offset: number) => (textBuffer as any).get_iter_at_offset(offset);
+
+    for (const r of stringRanges) {
+      const after = text.slice(r.end);
+      const isKey = /^\s*:/.test(after);
+      textBuffer.apply_tag(isKey ? tagKey : tagString, iterAt(r.start), iterAt(r.end));
+    }
+
+    const reNumber = /-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g;
+    for (let m = reNumber.exec(text); m; m = reNumber.exec(text)) {
+      if (inString(m.index)) continue;
+      textBuffer.apply_tag(tagNumber, iterAt(m.index), iterAt(m.index + m[0].length));
+    }
+
+    const reBool = /\btrue\b|\bfalse\b/g;
+    for (let m = reBool.exec(text); m; m = reBool.exec(text)) {
+      if (inString(m.index)) continue;
+      textBuffer.apply_tag(tagBoolean, iterAt(m.index), iterAt(m.index + m[0].length));
+    }
+
+    const reNull = /\bnull\b/g;
+    for (let m = reNull.exec(text); m; m = reNull.exec(text)) {
+      if (inString(m.index)) continue;
+      textBuffer.apply_tag(tagNull, iterAt(m.index), iterAt(m.index + m[0].length));
+    }
+
+    for (let i = 0; i < text.length; i++) {
+      if (inString(i)) continue;
+      const ch = text[i];
+      if (ch === "{" || ch === "}" || ch === "[" || ch === "]" || ch === ":" || ch === ",") {
+        textBuffer.apply_tag(tagPunctuation, iterAt(i), iterAt(i + 1));
+      }
+    }
+  };
+
+  const setViewMode = (mode: "tree" | "raw") => {
+    viewMode = mode;
+    stack.visible_child_name = mode === "raw" ? "text" : "tree";
+  };
+
+  const copyRawToClipboard = () => {
+    try {
+      const start = textBuffer.get_start_iter();
+      const end = textBuffer.get_end_iter();
+      textBuffer.select_range(start, end);
+      (textView as any).copy_clipboard?.();
+    } catch {
+    }
+  };
+
+  stack.visible_child_name = "tree";
 
   const setText = (text: string) => {
-    stack.visible_child_name = "text";
-    textBuffer.set_text(text, -1);
+    rawText = text;
+    applyJsonHighlight(text);
+    setViewMode("raw");
   };
 
   const setJson = (value: unknown) => {
-    stack.visible_child_name = "tree";
     rootStore.remove_all();
+
+    try {
+      rawText = JSON.stringify(value, null, 2);
+    } catch {
+      rawText = String(value);
+    }
+    applyJsonHighlight(rawText);
+
+    setViewMode(viewMode);
 
     if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
@@ -237,8 +339,9 @@ export default function createResponsePage(): ResponsePage {
   };
 
   const setError = (message: string) => {
-    stack.visible_child_name = "text";
-    textBuffer.set_text(message, -1);
+    rawText = message;
+    applyJsonHighlight(message);
+    setViewMode("raw");
   };
 
   return {
@@ -246,5 +349,8 @@ export default function createResponsePage(): ResponsePage {
     setText,
     setJson,
     setError,
+    setViewMode,
+    getViewMode: () => viewMode,
+    copyRawToClipboard,
   };
 }

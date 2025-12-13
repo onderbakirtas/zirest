@@ -163,36 +163,54 @@ const onActivate = (app: Adw.Application) => {
   });
   statusBar.hexpand = true;
 
-  const leftStatus = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-  });
-  leftStatus.hexpand = true;
-
-  const statusCodeLabel = new Gtk.Label({ xalign: 0, use_markup: true, label: "" });
-  const statusTextLabel = new Gtk.Label({ xalign: 0, label: "" });
-  statusTextLabel.css_classes = ["dim-label"];
-
-  leftStatus.append(statusCodeLabel);
-  leftStatus.append(statusTextLabel);
-
-  const rightStatus = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 10,
-    halign: Gtk.Align.END,
-  });
-
   const durationLabel = new Gtk.Label({ xalign: 0, label: "" });
   durationLabel.css_classes = ["dim-label"];
 
   const sizeLabel = new Gtk.Label({ xalign: 0, label: "" });
   sizeLabel.css_classes = ["dim-label"];
 
-  rightStatus.append(durationLabel);
-  rightStatus.append(sizeLabel);
+  const leftMetrics = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 10,
+    halign: Gtk.Align.START,
+  });
+  leftMetrics.append(durationLabel);
+  leftMetrics.append(sizeLabel);
 
-  statusBar.set_start_widget(leftStatus);
-  statusBar.set_end_widget(rightStatus);
+  const centerStatus = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 6,
+    halign: Gtk.Align.CENTER,
+  });
+  centerStatus.hexpand = true;
+
+  const statusCodeLabel = new Gtk.Label({ xalign: 0, use_markup: true, label: "" });
+  const statusTextLabel = new Gtk.Label({ xalign: 0, label: "" });
+  statusTextLabel.css_classes = ["dim-label"];
+  centerStatus.append(statusCodeLabel);
+  centerStatus.append(statusTextLabel);
+
+  const rightActions = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 6,
+    halign: Gtk.Align.END,
+  });
+
+  const viewToggle = new Gtk.ToggleButton({
+    css_classes: ["flat"],
+    icon_name: "view-list-symbolic",
+  });
+  const copyButton = new Gtk.Button({
+    css_classes: ["flat"],
+    icon_name: "edit-copy-symbolic",
+  });
+
+  rightActions.append(viewToggle);
+  rightActions.append(copyButton);
+
+  statusBar.set_start_widget(leftMetrics);
+  statusBar.set_center_widget(centerStatus);
+  statusBar.set_end_widget(rightActions);
 
   const setStatus = (code: number | string, text: string) => {
     const codeStr = String(code);
@@ -209,6 +227,13 @@ const onActivate = (app: Adw.Application) => {
     const esc = (s: string) => GLib.markup_escape_text(s, -1);
     statusCodeLabel.set_markup(`<span foreground=\"${color}\">${esc(codeStr)}</span>`);
     statusTextLabel.label = text;
+  };
+
+  const syncViewToggle = () => {
+    const mode = responsePage.getViewMode();
+    const isRaw = mode === "raw";
+    viewToggle.set_active(isRaw);
+    (viewToggle as any).icon_name = isRaw ? "code-symbolic" : "view-list-symbolic";
   };
 
   const showResponse = () => {
@@ -347,13 +372,25 @@ const onActivate = (app: Adw.Application) => {
           sizeLabel.label = "";
           responsePage.setError(String(e));
         }
+
+        syncViewToggle();
       })();
     },
   });
 
-  renderHistory();
-  root.append(inputBar.widget);
+  viewToggle.connect("toggled", () => {
+    responsePage.setViewMode(viewToggle.get_active() ? "raw" : "tree");
+    syncViewToggle();
+  });
 
+  copyButton.connect("clicked", () => {
+    responsePage.copyRawToClipboard();
+  });
+
+  syncViewToggle();
+  renderHistory();
+
+  root.append(inputBar.widget);
   root.append(contentStack);
   root.append(statusBar);
 
@@ -361,7 +398,7 @@ const onActivate = (app: Adw.Application) => {
   view.add_top_bar(header);
   view.set_content(root);
 
-  window.set_content(view)
+  window.set_content(view);
   window.present();
 };
 
