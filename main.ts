@@ -118,11 +118,37 @@ const onActivate = (app: Adw.Application) => {
 
   const responsePage = createResponsePage();
 
-  const placeholder = new Gtk.Label({ label: "" });
-  placeholder.hexpand = true;
-  placeholder.vexpand = true;
-  placeholder.halign = Gtk.Align.FILL;
-  placeholder.valign = Gtk.Align.FILL;
+  const placeholder = new Gtk.Box({
+    orientation: Gtk.Orientation.VERTICAL,
+    spacing: 12,
+    hexpand: true,
+    vexpand: true,
+    halign: Gtk.Align.CENTER,
+    valign: Gtk.Align.CENTER,
+  });
+
+  const emptyIcon = new Gtk.Image({
+    icon_name: "network-workgroup-symbolic",
+    pixel_size: 96,
+  });
+
+  const emptyTitle = new Gtk.Label({
+    label: "No response yet",
+    wrap: true,
+    justify: Gtk.Justification.CENTER,
+  });
+  emptyTitle.css_classes = ["title-2"];
+
+  const emptySubtitle = new Gtk.Label({
+    label: "Send a request to see its response here.",
+    wrap: true,
+    justify: Gtk.Justification.CENTER,
+  });
+  emptySubtitle.css_classes = ["dim-label"];
+
+  placeholder.append(emptyIcon);
+  placeholder.append(emptyTitle);
+  placeholder.append(emptySubtitle);
 
   const contentStack = new Adw.ViewStack();
   contentStack.hexpand = true;
