@@ -1,0 +1,29 @@
+{
+	"name": "@ts-for-gir-example/adw-1-hello-example",
+	"description": "Simple GJS Typescript hello-world example using Libadwaita",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"build": "vite build",
+		"start:debug": "GTK_DEBUG=interactive gjs -m dist/main.js",
+		"start": "gjs -m dist/main.js",
+		"check": "tsc --noEmit",
+		"clear": "rm -rf dist",
+		"br": "vite build && gjs -m dist/main.js"
+	},
+	"author": "Pascal Garber <pascal@mailfreun.de>",
+	"license": "MIT",
+	"devDependencies": {
+		"typescript": "^5.9.3",
+		"vite": "^7.2.7"
+	},
+	"dependencies": {
+		"@girs/adw-1": "^1.9.0-4.0.0-beta.38",
+		"@girs/gio-2.0": "^2.86.0-4.0.0-beta.38",
+		"@girs/gjs": "^4.0.0-beta.38",
+		"@girs/glib-2.0": "^2.86.0-4.0.0-beta.38",
+		"@girs/gtk-4.0": "^4.20.1-4.0.0-beta.38",
+		"@girs/soup-3.0": "^3.6.5-4.0.0-beta.38"
+	}
+}
