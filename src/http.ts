@@ -7,6 +7,7 @@ export type HttpResponse = {
   ok: boolean;
   durationMs: number;
   sizeBytes: number;
+  headers: Record<string, string>;
   text: () => Promise<string>;
 };
 
@@ -69,12 +70,37 @@ export async function httpRequest(
   const statusText =
     (message.get_reason_phrase ? message.get_reason_phrase() : message.reason_phrase) ?? "";
 
+  const headerMap: Record<string, string[]> = {};
+  try {
+    const responseHeaders =
+      (typeof message.get_response_headers === "function"
+        ? message.get_response_headers()
+        : message.response_headers) ?? null;
+
+    if (responseHeaders && typeof responseHeaders.foreach === "function") {
+      responseHeaders.foreach((name: string, value: string) => {
+        const k = String(name ?? "");
+        if (!k) return;
+        const v = String(value ?? "");
+        headerMap[k] ||= [];
+        headerMap[k].push(v);
+      });
+    }
+  } catch {
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [k, vals] of Object.entries(headerMap)) {
+    headers[k] = vals.join(", ");
+  }
+
   return {
     status,
     statusText: String(statusText),
     ok: status >= 200 && status < 300,
     durationMs,
     sizeBytes,
+    headers,
     text: async () => bytesToString(bytes),
   };
 }
