@@ -1,20 +1,12 @@
 import GLib from "gi://GLib";
 import Gdk from "gi://Gdk?version=4.0";
 import Gtk from "gi://Gtk?version=4.0";
+import GtkSource from "gi://GtkSource?version=5";
 
 export type RequestBodyPanel = {
   widget: Gtk.Widget;
   getSendOptions: () => { body?: string; contentType?: string };
 };
-
-const COLORS = {
-  punctuation: "#D4D4D4",
-  key: "#9CDCFE",
-  string: "#CE9178",
-  number: "#B5CEA8",
-  boolean: "#569CD6",
-  null: "#569CD6",
-} as const;
 
 export default function createRequestBodyPanel(): RequestBodyPanel {
   const root = new Gtk.Box({
@@ -56,50 +48,17 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   headerRow.append(modeButtons);
   root.append(headerRow);
 
-  const buffer = new Gtk.TextBuffer();
-  const lineNumbersBuffer = new Gtk.TextBuffer();
-  const tagTable = buffer.get_tag_table();
+  const languageManager = (GtkSource as any).LanguageManager?.get_default?.();
+  const jsonLanguage = languageManager ? languageManager.get_language?.("json") : null;
 
-  const tagPunctuation = new Gtk.TextTag({ name: "punctuation", foreground: COLORS.punctuation });
-  const tagKey = new Gtk.TextTag({ name: "key", foreground: COLORS.key });
-  const tagString = new Gtk.TextTag({ name: "string", foreground: COLORS.string });
-  const tagNumber = new Gtk.TextTag({ name: "number", foreground: COLORS.number });
-  const tagBoolean = new Gtk.TextTag({ name: "boolean", foreground: COLORS.boolean });
-  const tagNull = new Gtk.TextTag({ name: "null", foreground: COLORS.null });
-
-  tagTable.add(tagPunctuation);
-  tagTable.add(tagKey);
-  tagTable.add(tagString);
-  tagTable.add(tagNumber);
-  tagTable.add(tagBoolean);
-  tagTable.add(tagNull);
-
-  const lineNumbersView = new Gtk.TextView({
-    buffer: lineNumbersBuffer,
-    editable: false,
-    cursor_visible: false,
-    monospace: true,
-    wrap_mode: Gtk.WrapMode.NONE,
-    hexpand: false,
-    vexpand: true,
-    left_margin: 8,
-    right_margin: 8,
-    top_margin: 12,
-    bottom_margin: 12,
-    justification: Gtk.Justification.RIGHT,
-  });
-  lineNumbersView.css_classes = ["dim-label"];
+  const buffer = new (GtkSource as any).Buffer();
   try {
-    (lineNumbersView as any).focusable = false;
-    (lineNumbersView as any).can_focus = false;
-  } catch {
-  }
-  try {
-    (lineNumbersView as any).set_size_request?.(44, -1);
+    (buffer as any).highlight_syntax = false;
+    (buffer as any).highlight_matching_brackets = true;
   } catch {
   }
 
-  const view = new Gtk.TextView({
+  const view = new (GtkSource as any).View({
     buffer,
     editable: true,
     monospace: true,
@@ -111,21 +70,24 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     top_margin: 12,
     bottom_margin: 12,
   });
+  try {
+    (view as any).show_line_numbers = true;
+    (view as any).tab_width = 2;
+    (view as any).indent_width = 2;
+    (view as any).insert_spaces_instead_of_tabs = true;
+    (view as any).auto_indent = true;
+  } catch {
+  }
 
   const keyController = new Gtk.EventControllerKey();
   keyController.connect("key-pressed", (_c: any, keyval: number, _keycode: number, state: number) => {
     if (keyval === (Gdk as any).KEY_Tab && !(state & (Gdk as any).ModifierType.SHIFT_MASK)) {
       const anyBuffer = buffer as any;
 
+      // If there is a selection, let GtkSourceView handle indentation.
       try {
         const sel = anyBuffer.get_selection_bounds?.();
-        if (sel && sel[0]) {
-          // Keep it simple: if there is a selection, don't try to transform it.
-          const selStart = sel[1];
-          buffer.delete(selStart, sel[2]);
-          buffer.insert(selStart, "  ", -1);
-          return true;
-        }
+        if (sel && sel[0]) return false;
       } catch {
       }
 
@@ -147,34 +109,22 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
           }
 
           // If we didn't move, there is no token.
-          if (wordStart.equal?.(wordEnd)) {
-            buffer.insert(iter, "  ", -1);
-            return true;
-          }
+          if (wordStart.equal?.(wordEnd)) return false;
 
           const token = String(anyBuffer.get_text(wordStart, wordEnd, true) ?? "");
-          if (!token || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
-            buffer.insert(iter, "  ", -1);
-            return true;
-          }
+          if (!token || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) return false;
 
           // If it's already quoted, don't touch.
           const before = wordStart.copy();
           if (before.backward_char?.()) {
             const bch = String(before.get_char?.() ?? "");
-            if (bch === '"') {
-              buffer.insert(iter, "  ", -1);
-              return true;
-            }
+            if (bch === '"') return false;
           }
 
           // If ':' is already next, don't transform.
           const after = wordEnd.copy();
           const ach = String(after.get_char?.() ?? "");
-          if (ach === ":") {
-            buffer.insert(iter, "  ", -1);
-            return true;
-          }
+          if (ach === ":") return false;
 
           buffer.delete(wordStart, wordEnd);
           buffer.insert(wordStart, `"${token}": `, -1);
@@ -184,76 +134,8 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
         }
       }
 
-      buffer.insert(iter, "  ", -1);
-      return true;
-    }
-
-    if (
-      keyval === (Gdk as any).KEY_Return ||
-      keyval === (Gdk as any).KEY_KP_Enter ||
-      keyval === (Gdk as any).KEY_ISO_Enter
-    ) {
-      const anyBuffer = buffer as any;
-
-      let insertIter: any;
-      try {
-        const sel = anyBuffer.get_selection_bounds?.();
-        if (sel && sel[0]) {
-          const selStart = sel[1];
-          const selEnd = sel[2];
-          buffer.delete(selStart, selEnd);
-          insertIter = selStart;
-        }
-      } catch {
-      }
-
-      if (!insertIter) {
-        const insertMark = buffer.get_insert();
-        insertIter = anyBuffer.get_iter_at_mark(insertMark);
-      }
-
-      const lineStart = insertIter.copy();
-      try {
-        lineStart.set_line_offset(0);
-      } catch {
-      }
-
-      const indentEnd = lineStart.copy();
-      while (true) {
-        let ch = "";
-        try {
-          ch = String(indentEnd.get_char?.() ?? "");
-        } catch {
-          ch = "";
-        }
-
-        const atLineEnd = (() => {
-          try {
-            return Boolean(indentEnd.ends_line?.());
-          } catch {
-            return false;
-          }
-        })();
-
-        if (atLineEnd) break;
-        if (ch !== " " && ch !== "\t") break;
-
-        try {
-          indentEnd.forward_char();
-        } catch {
-          break;
-        }
-      }
-
-      let indent = "";
-      try {
-        indent = String(anyBuffer.get_text(lineStart, indentEnd, true) ?? "");
-      } catch {
-        indent = "";
-      }
-
-      buffer.insert(insertIter, "\n" + indent, -1);
-      return true;
+      // Let GtkSourceView insert spaces (tab_width=2) / indent normally.
+      return false;
     }
 
     return false;
@@ -266,89 +148,9 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   });
   scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
 
-  const editorRow = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 0,
-    hexpand: true,
-    vexpand: true,
-  });
-  editorRow.append(lineNumbersView);
-  editorRow.append(view);
-  scrolled.set_child(editorRow);
+  scrolled.set_child(view);
 
   root.append(scrolled);
-
-  const clearTags = () => {
-    const fullStart = buffer.get_start_iter();
-    const fullEnd = buffer.get_end_iter();
-    try {
-      (buffer as any).remove_all_tags(fullStart, fullEnd);
-    } catch {
-    }
-  };
-
-  const updateLineNumbers = () => {
-    let lines = 1;
-    try {
-      lines = Math.max(1, (buffer as any).get_line_count?.() ?? 1);
-    } catch {
-      lines = 1;
-    }
-    let out = "";
-    for (let i = 1; i <= lines; i++) out += `${i}\n`;
-    lineNumbersBuffer.set_text(out, -1);
-  };
-
-  const iterAt = (offset: number) => (buffer as any).get_iter_at_offset(offset);
-
-  const applyJsonHighlight = (text: string) => {
-    clearTags();
-
-    const stringRanges: Array<{ start: number; end: number }> = [];
-    const reString = /\"(?:\\.|[^\"\\])*\"/g;
-    for (let m = reString.exec(text); m; m = reString.exec(text)) {
-      stringRanges.push({ start: m.index, end: m.index + m[0].length });
-    }
-
-    const inString = (pos: number) => {
-      for (const r of stringRanges) {
-        if (pos >= r.start && pos < r.end) return true;
-      }
-      return false;
-    };
-
-    for (const r of stringRanges) {
-      const after = text.slice(r.end);
-      const isKey = /^\s*:/.test(after);
-      buffer.apply_tag(isKey ? tagKey : tagString, iterAt(r.start), iterAt(r.end));
-    }
-
-    const reNumber = /-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g;
-    for (let m = reNumber.exec(text); m; m = reNumber.exec(text)) {
-      if (inString(m.index)) continue;
-      buffer.apply_tag(tagNumber, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    const reBool = /\btrue\b|\bfalse\b/g;
-    for (let m = reBool.exec(text); m; m = reBool.exec(text)) {
-      if (inString(m.index)) continue;
-      buffer.apply_tag(tagBoolean, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    const reNull = /\bnull\b/g;
-    for (let m = reNull.exec(text); m; m = reNull.exec(text)) {
-      if (inString(m.index)) continue;
-      buffer.apply_tag(tagNull, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    for (let i = 0; i < text.length; i++) {
-      if (inString(i)) continue;
-      const ch = text[i];
-      if (ch === "{" || ch === "}" || ch === "[" || ch === "]" || ch === ":" || ch === ",") {
-        buffer.apply_tag(tagPunctuation, iterAt(i), iterAt(i + 1));
-      }
-    }
-  };
 
   const getText = () => {
     const anyBuffer = buffer as any;
@@ -357,30 +159,23 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
     return typeof anyBuffer.get_text === "function" ? anyBuffer.get_text(start, end, true) : "";
   };
 
-  const rehighlight = () => {
-    if (mode !== "json") {
-      clearTags();
-      return;
-    }
-    applyJsonHighlight(String(getText() ?? ""));
-  };
-
-  buffer.connect("changed", () => {
-    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-      updateLineNumbers();
-      if (mode === "json") rehighlight();
-      return GLib.SOURCE_REMOVE;
-    });
-  });
-
   const setMode = (next: "raw" | "json") => {
     updatingMode = true;
     mode = next;
     rawBtn.active = next === "raw";
     jsonBtn.active = next === "json";
     updatingMode = false;
-    updateLineNumbers();
-    rehighlight();
+
+    try {
+      if (mode === "json") {
+        (buffer as any).language = jsonLanguage;
+        (buffer as any).highlight_syntax = true;
+      } else {
+        (buffer as any).language = null;
+        (buffer as any).highlight_syntax = false;
+      }
+    } catch {
+    }
   };
 
   rawBtn.connect("toggled", () => {
@@ -402,7 +197,7 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
       const body = String(getText() ?? "");
       if (!body.trim()) return {};
       if (mode === "json") return { body, contentType: "application/json" };
-      return { body, contentType: "text/plain" };
+      return { body };
     },
   } satisfies RequestBodyPanel;
 }

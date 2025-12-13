@@ -1,6 +1,7 @@
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
+import GtkSource from "gi://GtkSource?version=5";
 
 type ResponsePage = {
   widget: Gtk.Widget;
@@ -16,21 +17,7 @@ type ResponsePage = {
   }) => void;
 };
 
-const COLORS = {
-  punctuation: "#D4D4D4",
-  key: "#9CDCFE",
-  string: "#CE9178",
-  number: "#B5CEA8",
-  boolean: "#569CD6",
-  null: "#569CD6",
-  error: "#F44747",
-} as const;
-
 const esc = (s: string) => GLib.markup_escape_text(s, -1);
-
-const span = (text: string, color: string) => {
-  return `<span font_family="monospace" foreground="${color}">${esc(text)}</span>`;
-};
 
 export default function createResponsePage(): ResponsePage {
   const root = new Gtk.Box({
@@ -40,48 +27,16 @@ export default function createResponsePage(): ResponsePage {
     vexpand: true,
   });
 
-  const bodyBuffer = new Gtk.TextBuffer();
-  const bodyLineNumbersBuffer = new Gtk.TextBuffer();
-  const bodyTagTable = bodyBuffer.get_tag_table();
-  const tagPunctuation = new Gtk.TextTag({ name: "punctuation", foreground: COLORS.punctuation });
-  const tagKey = new Gtk.TextTag({ name: "key", foreground: COLORS.key });
-  const tagString = new Gtk.TextTag({ name: "string", foreground: COLORS.string });
-  const tagNumber = new Gtk.TextTag({ name: "number", foreground: COLORS.number });
-  const tagBoolean = new Gtk.TextTag({ name: "boolean", foreground: COLORS.boolean });
-  const tagNull = new Gtk.TextTag({ name: "null", foreground: COLORS.null });
-  bodyTagTable.add(tagPunctuation);
-  bodyTagTable.add(tagKey);
-  bodyTagTable.add(tagString);
-  bodyTagTable.add(tagNumber);
-  bodyTagTable.add(tagBoolean);
-  bodyTagTable.add(tagNull);
+  const languageManager = (GtkSource as any).LanguageManager?.get_default?.();
+  const jsonLanguage = languageManager ? languageManager.get_language?.("json") : null;
 
-  const bodyLineNumbersView = new Gtk.TextView({
-    buffer: bodyLineNumbersBuffer,
-    editable: false,
-    cursor_visible: false,
-    monospace: true,
-    wrap_mode: Gtk.WrapMode.NONE,
-    hexpand: false,
-    vexpand: true,
-    left_margin: 8,
-    right_margin: 8,
-    top_margin: 12,
-    bottom_margin: 12,
-    justification: Gtk.Justification.RIGHT,
-  });
-  bodyLineNumbersView.css_classes = ["dim-label"];
+  const bodyBuffer = new (GtkSource as any).Buffer();
   try {
-    (bodyLineNumbersView as any).focusable = false;
-    (bodyLineNumbersView as any).can_focus = false;
-  } catch {
-  }
-  try {
-    (bodyLineNumbersView as any).set_size_request?.(44, -1);
+    (bodyBuffer as any).highlight_matching_brackets = true;
   } catch {
   }
 
-  const bodyView = new Gtk.TextView({
+  const bodyView = new (GtkSource as any).View({
     buffer: bodyBuffer,
     editable: false,
     monospace: true,
@@ -93,21 +48,20 @@ export default function createResponsePage(): ResponsePage {
     top_margin: 12,
     bottom_margin: 12,
   });
+  try {
+    (bodyView as any).show_line_numbers = true;
+    (bodyView as any).tab_width = 2;
+    (bodyView as any).indent_width = 2;
+    (bodyView as any).insert_spaces_instead_of_tabs = true;
+  } catch {
+  }
   const bodyScrolled = new Gtk.ScrolledWindow({
     hexpand: true,
     vexpand: true,
   });
   bodyScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
 
-  const bodyRow = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 0,
-    hexpand: true,
-    vexpand: true,
-  });
-  bodyRow.append(bodyLineNumbersView);
-  bodyRow.append(bodyView);
-  bodyScrolled.set_child(bodyRow);
+  bodyScrolled.set_child(bodyView);
 
   const headersList = new Gtk.ListBox({
     css_classes: ["boxed-list"],
@@ -207,73 +161,17 @@ export default function createResponsePage(): ResponsePage {
   root.append(tabRow);
   root.append(notebook);
 
-  const updateBodyLineNumbers = () => {
-    let lines = 1;
+  const setBody = (text: string, opts: { isJson?: boolean } = {}) => {
+    bodyBuffer.set_text(String(text ?? ""), -1);
     try {
-      lines = Math.max(1, (bodyBuffer as any).get_line_count?.() ?? 1);
-    } catch {
-      lines = 1;
-    }
-    let out = "";
-    for (let i = 1; i <= lines; i++) out += `${i}\n`;
-    bodyLineNumbersBuffer.set_text(out, -1);
-  };
-
-  const applyJsonHighlight = (text: string) => {
-    bodyBuffer.set_text(text, -1);
-    updateBodyLineNumbers();
-
-    const fullStart = bodyBuffer.get_start_iter();
-    const fullEnd = bodyBuffer.get_end_iter();
-    try {
-      (bodyBuffer as any).remove_all_tags(fullStart, fullEnd);
-    } catch {
-    }
-
-    const stringRanges: Array<{ start: number; end: number }> = [];
-    const reString = /\"(?:\\.|[^\"\\])*\"/g;
-    for (let m = reString.exec(text); m; m = reString.exec(text)) {
-      stringRanges.push({ start: m.index, end: m.index + m[0].length });
-    }
-    const inString = (pos: number) => {
-      for (const r of stringRanges) {
-        if (pos >= r.start && pos < r.end) return true;
+      if (opts.isJson) {
+        (bodyBuffer as any).language = jsonLanguage;
+        (bodyBuffer as any).highlight_syntax = true;
+      } else {
+        (bodyBuffer as any).language = null;
+        (bodyBuffer as any).highlight_syntax = false;
       }
-      return false;
-    };
-
-    const iterAt = (offset: number) => (bodyBuffer as any).get_iter_at_offset(offset);
-
-    for (const r of stringRanges) {
-      const after = text.slice(r.end);
-      const isKey = /^\s*:/.test(after);
-      bodyBuffer.apply_tag(isKey ? tagKey : tagString, iterAt(r.start), iterAt(r.end));
-    }
-
-    const reNumber = /-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g;
-    for (let m = reNumber.exec(text); m; m = reNumber.exec(text)) {
-      if (inString(m.index)) continue;
-      bodyBuffer.apply_tag(tagNumber, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    const reBool = /\btrue\b|\bfalse\b/g;
-    for (let m = reBool.exec(text); m; m = reBool.exec(text)) {
-      if (inString(m.index)) continue;
-      bodyBuffer.apply_tag(tagBoolean, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    const reNull = /\bnull\b/g;
-    for (let m = reNull.exec(text); m; m = reNull.exec(text)) {
-      if (inString(m.index)) continue;
-      bodyBuffer.apply_tag(tagNull, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    for (let i = 0; i < text.length; i++) {
-      if (inString(i)) continue;
-      const ch = text[i];
-      if (ch === "{" || ch === "}" || ch === "[" || ch === "]" || ch === ":" || ch === ",") {
-        bodyBuffer.apply_tag(tagPunctuation, iterAt(i), iterAt(i + 1));
-      }
+    } catch {
     }
   };
 
@@ -303,21 +201,21 @@ export default function createResponsePage(): ResponsePage {
   };
 
   const setText = (text: string) => {
-    applyJsonHighlight(text);
+    setBody(text, { isJson: false });
     setActiveTab(0);
   };
 
   const setJson = (value: unknown) => {
     try {
-      applyJsonHighlight(JSON.stringify(value, null, 2));
+      setBody(JSON.stringify(value, null, 2), { isJson: true });
     } catch {
-      applyJsonHighlight(String(value));
+      setBody(String(value), { isJson: false });
     }
     setActiveTab(0);
   };
 
   const setError = (message: string) => {
-    applyJsonHighlight(message);
+    setBody(message, { isJson: false });
     setActiveTab(0);
   };
 
