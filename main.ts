@@ -7,8 +7,10 @@ import Adw from "gi://Adw";
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
+import GtkSource from "gi://GtkSource?version=5";
 import createInputBar from "./src/inputbar";
 import createResponsePage from "./src/response_page";
+import createRequestBodyPanel from "./src/request_body";
 import { httpRequest } from "./src/http";
 import {
   addRequestHistoryItem,
@@ -24,14 +26,14 @@ const app = new Adw.Application({
 });
 
 const AdwStyleManager = Adw.StyleManager.get_default();
-AdwStyleManager.colorScheme = Adw.ColorScheme.FORCE_DARK;
+AdwStyleManager.colorScheme = Adw.ColorScheme.DEFAULT;
 
 const onActivate = (app: Adw.Application) => {
   const window = new Adw.ApplicationWindow({
     application: app,
     title: "Zirest",
-    default_width: 640,
-    default_height: 480,
+    default_width: 960,
+    default_height: 640,
   });
 
 
@@ -60,6 +62,12 @@ const onActivate = (app: Adw.Application) => {
     margin_start: 10,
     margin_end: 10,
   });
+  historyPopoverRoot.halign = Gtk.Align.FILL;
+  historyPopoverRoot.hexpand = true;
+  try {
+    (historyPopoverRoot as any).set_size_request?.(520, -1);
+  } catch {
+  }
 
   const historySearch = new Gtk.SearchEntry({
     placeholder_text: "Search",
@@ -74,8 +82,13 @@ const onActivate = (app: Adw.Application) => {
     hexpand: true,
     vexpand: false,
   });
+  historyScrolled.halign = Gtk.Align.FILL;
   historyScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  (historyScrolled as any).set_min_content_width?.(420);
+  (historyScrolled as any).set_min_content_width?.(520);
+  try {
+    (historyScrolled as any).set_size_request?.(520, -1);
+  } catch {
+  }
   (historyScrolled as any).set_min_content_height?.(260);
   (historyScrolled as any).set_max_content_height?.(260);
   try {
@@ -117,6 +130,57 @@ const onActivate = (app: Adw.Application) => {
   })
 
   const responsePage = createResponsePage();
+  const appendQueryParams = (
+    baseUrl: string,
+    params?: Array<{ key: string; value: string }>,
+  ): string => {
+    const pairs = (params ?? []).filter((p) => String(p.key ?? "").trim().length > 0);
+    if (!pairs.length) return String(baseUrl ?? "");
+
+    const raw = String(baseUrl ?? "");
+    const hashSplit = raw.split("#");
+    const beforeHash = hashSplit[0];
+    const hash = hashSplit.length > 1 ? `#${hashSplit.slice(1).join("#")}` : "";
+    const qSplit = beforeHash.split("?");
+    const base = qSplit[0];
+    const existing = qSplit.length > 1 ? qSplit.slice(1).join("?") : "";
+
+    const extra = pairs
+      .map((p) => {
+        const k = encodeURIComponent(String(p.key ?? "").trim());
+        const v = encodeURIComponent(String(p.value ?? ""));
+        return `${k}=${v}`;
+      })
+      .join("&");
+
+    const query = [existing, extra].filter(Boolean).join("&");
+    return `${base}?${query}${hash}`;
+  };
+
+  let inputBar: ReturnType<typeof createInputBar> | null = null;
+  let updatingUrlFromQuery = false;
+
+  const requestBodyPanel = createRequestBodyPanel({
+    onQueryParamsChanged: (params) => {
+      const ib = inputBar;
+      if (!ib) return;
+      const current = ib.getRequest().url;
+
+      // If user is actively editing URL and query tab also updates it, avoid infinite churn.
+      if (updatingUrlFromQuery) return;
+
+      // Strip current query string to get the base.
+      const base = String(current ?? "").split("?")[0];
+      const nextUrl = appendQueryParams(base, params);
+      if (String(nextUrl) === String(current ?? "")) return;
+      updatingUrlFromQuery = true;
+      try {
+        ib.setUrl(nextUrl);
+      } finally {
+        updatingUrlFromQuery = false;
+      }
+    },
+  });
 
   const placeholder = new Gtk.Box({
     orientation: Gtk.Orientation.VERTICAL,
@@ -156,85 +220,6 @@ const onActivate = (app: Adw.Application) => {
   contentStack.add_titled(placeholder, "empty", "");
   contentStack.add_titled(responsePage.widget, "response", "");
   contentStack.visible_child_name = "empty";
-
-  const statusBar = new Gtk.CenterBox({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    margin_top: 6,
-  });
-  statusBar.hexpand = true;
-
-  const durationLabel = new Gtk.Label({ xalign: 0, label: "" });
-  durationLabel.css_classes = ["dim-label"];
-
-  const sizeLabel = new Gtk.Label({ xalign: 0, label: "" });
-  sizeLabel.css_classes = ["dim-label"];
-
-  const leftMetrics = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 10,
-    halign: Gtk.Align.START,
-  });
-  leftMetrics.append(durationLabel);
-  leftMetrics.append(sizeLabel);
-
-  const centerStatus = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-    halign: Gtk.Align.CENTER,
-  });
-  centerStatus.hexpand = true;
-
-  const statusCodeLabel = new Gtk.Label({ xalign: 0, use_markup: true, label: "" });
-  const statusTextLabel = new Gtk.Label({ xalign: 0, label: "" });
-  statusTextLabel.css_classes = ["dim-label"];
-  centerStatus.append(statusCodeLabel);
-  centerStatus.append(statusTextLabel);
-
-  const rightActions = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-    halign: Gtk.Align.END,
-  });
-
-  const viewToggle = new Gtk.ToggleButton({
-    css_classes: ["flat"],
-    icon_name: "view-list-symbolic",
-  });
-  const copyButton = new Gtk.Button({
-    css_classes: ["flat"],
-    icon_name: "edit-copy-symbolic",
-  });
-
-  rightActions.append(viewToggle);
-  rightActions.append(copyButton);
-
-  statusBar.set_start_widget(leftMetrics);
-  statusBar.set_center_widget(centerStatus);
-  statusBar.set_end_widget(rightActions);
-
-  const setStatus = (code: number | string, text: string) => {
-    const codeStr = String(code);
-    const c = typeof code === "number" ? code : Number(code);
-
-    let color = "#D4D4D4";
-    if (!Number.isNaN(c)) {
-      if (c >= 200 && c < 300) color = "#6A9955";
-      else if (c >= 300 && c < 400) color = "#569CD6";
-      else if (c >= 400 && c < 500) color = "#F44747";
-      else if (c >= 500 && c < 600) color = "#C586C0";
-    }
-
-    const esc = (s: string) => GLib.markup_escape_text(s, -1);
-    statusCodeLabel.set_markup(`<span foreground=\"${color}\">${esc(codeStr)}</span>`);
-    statusTextLabel.label = text;
-  };
-
-  const syncViewToggle = () => {
-    const mode = responsePage.getViewMode();
-    const isRaw = mode === "raw";
-    viewToggle.set_active(isRaw);
-    (viewToggle as any).icon_name = isRaw ? "code-symbolic" : "view-list-symbolic";
-  };
 
   const showResponse = () => {
     contentStack.visible_child_name = "response";
@@ -299,18 +284,20 @@ const onActivate = (app: Adw.Application) => {
       textBox.hexpand = true;
 
       const top = new Gtk.Label({ use_markup: true, xalign: 0 });
+      top.css_classes = ["caption"];
       top.set_markup(`<b>${escMarkup(`${item.method.toUpperCase()} ${item.url}`)}</b>`);
       top.ellipsize = Pango.EllipsizeMode.END;
 
       const bottom = new Gtk.Label({ label: formatHistoryDate(item.at), xalign: 0 });
-      bottom.css_classes = ["dim-label"];
+      bottom.css_classes = ["dim-label", "caption"];
 
       textBox.append(top);
       textBox.append(bottom);
       selectBtn.set_child(textBox);
 
       selectBtn.connect("clicked", () => {
-        inputBar.setRequest(item.method, item.url);
+        const ib = inputBar;
+        if (ib) ib.setRequest(item.method, item.url);
         historyPopover.popdown();
       });
 
@@ -339,27 +326,44 @@ const onActivate = (app: Adw.Application) => {
     renderHistory();
   });
 
-  const inputBar = createInputBar({
+  inputBar = createInputBar({
     onSend: (method, url) => {
-      historyItems = addRequestHistoryItem({ method, url });
+      const sendOptions = requestBodyPanel.getSendOptions();
+      const finalUrl = appendQueryParams(url, sendOptions.queryParams);
+
+      historyItems = addRequestHistoryItem({ method, url: finalUrl });
       renderHistory();
+
+      const headers: Record<string, string> = {};
+      if (sendOptions.contentType) headers["Content-Type"] = sendOptions.contentType;
+      for (const h of sendOptions.headers ?? []) {
+        const k = String(h.key ?? "").trim();
+        if (!k) continue;
+        headers[k] = String(h.value ?? "");
+      }
 
       void (async () => {
         showResponse();
 
-        setStatus("…", "Loading");
-        durationLabel.label = "";
-        sizeLabel.label = "";
-
-        responsePage.setText("Loading...\n" + method + " " + url);
+        responsePage.setMeta({ status: "…", statusText: "Loading" });
+        responsePage.setHeaders({});
+        responsePage.setText("Loading...\n" + method + " " + finalUrl);
 
         try {
-          const res = await httpRequest(url, { method });
+          const res = await httpRequest(finalUrl, {
+            method,
+            headers: Object.keys(headers).length ? headers : undefined,
+            body: sendOptions.body,
+          });
           const text = await res.text();
 
-          setStatus(res.status, res.statusText);
-          durationLabel.label = `${Math.round(res.durationMs)} ms`;
-          sizeLabel.label = `${(res.sizeBytes / 1024).toFixed(1)} KB`;
+          responsePage.setMeta({
+            status: res.status,
+            statusText: res.statusText,
+            durationMs: res.durationMs,
+            sizeBytes: res.sizeBytes,
+          });
+          responsePage.setHeaders(res.headers);
 
           try {
             responsePage.setJson(JSON.parse(text));
@@ -367,32 +371,34 @@ const onActivate = (app: Adw.Application) => {
             responsePage.setText(text);
           }
         } catch (e) {
-          setStatus("ERR", "Error");
-          durationLabel.label = "";
-          sizeLabel.label = "";
+          responsePage.setMeta({ status: "ERR", statusText: "Error" });
+          responsePage.setHeaders({});
           responsePage.setError(String(e));
         }
-
-        syncViewToggle();
       })();
     },
   });
 
-  viewToggle.connect("toggled", () => {
-    responsePage.setViewMode(viewToggle.get_active() ? "raw" : "tree");
-    syncViewToggle();
-  });
-
-  copyButton.connect("clicked", () => {
-    responsePage.copyRawToClipboard();
-  });
-
-  syncViewToggle();
   renderHistory();
 
-  root.append(inputBar.widget);
-  root.append(contentStack);
-  root.append(statusBar);
+  const split = new Gtk.Paned({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    hexpand: true,
+    vexpand: true,
+  });
+  split.set_start_child(requestBodyPanel.widget);
+  split.set_end_child(contentStack);
+  GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+    try {
+      split.set_position(280);
+    } catch {
+    }
+    return GLib.SOURCE_REMOVE;
+  });
+
+  const ib = inputBar;
+  if (ib) root.append(ib.widget);
+  root.append(split);
 
   const view = new Adw.ToolbarView();
   view.add_top_bar(header);

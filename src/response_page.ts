@@ -1,87 +1,72 @@
-import Gio from "gi://Gio";
 import GLib from "gi://GLib";
-import GObject from "gi://GObject";
+import Adw from "gi://Adw";
 import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
+import GtkSource from "gi://GtkSource?version=5";
 
 type ResponsePage = {
   widget: Gtk.Widget;
   setText: (text: string) => void;
   setJson: (value: unknown) => void;
   setError: (message: string) => void;
-  setViewMode: (mode: "tree" | "raw") => void;
-  getViewMode: () => "tree" | "raw";
-  copyRawToClipboard: () => void;
+  setHeaders: (headers: Record<string, string>) => void;
+  setMeta: (meta: {
+    status: number | string;
+    statusText?: string;
+    durationMs?: number;
+    sizeBytes?: number;
+  }) => void;
 };
-
-const COLORS = {
-  punctuation: "#D4D4D4",
-  key: "#9CDCFE",
-  string: "#CE9178",
-  number: "#B5CEA8",
-  boolean: "#569CD6",
-  null: "#569CD6",
-  error: "#F44747",
-} as const;
 
 const esc = (s: string) => GLib.markup_escape_text(s, -1);
 
-const span = (text: string, color: string) => {
-  return `<span font_family="monospace" foreground="${color}">${esc(text)}</span>`;
-};
-
-class JsonNodeBase extends GObject.Object {
-  key: string;
-  value: any;
-  kind: "object" | "array" | "string" | "number" | "boolean" | "null" | "other";
-
-  constructor(key: string, value: any) {
-    super();
-    this.key = key;
-    this.value = value;
-
-    if (value === null) this.kind = "null";
-    else if (Array.isArray(value)) this.kind = "array";
-    else if (typeof value === "object") this.kind = "object";
-    else if (typeof value === "string") this.kind = "string";
-    else if (typeof value === "number") this.kind = "number";
-    else if (typeof value === "boolean") this.kind = "boolean";
-    else this.kind = "other";
-  }
-
-  isContainer() {
-    return this.kind === "object" || this.kind === "array";
-  }
-}
-
-const JsonNode = GObject.registerClass(JsonNodeBase);
-type JsonNodeT = InstanceType<typeof JsonNode>;
-
 export default function createResponsePage(): ResponsePage {
-  const stack = new Gtk.Stack();
-  stack.hexpand = true;
-  stack.vexpand = true;
+  const root = new Gtk.Box({
+    orientation: Gtk.Orientation.VERTICAL,
+    spacing: 0,
+    hexpand: true,
+    vexpand: true,
+  });
 
-  let viewMode: "tree" | "raw" = "tree";
-  let rawText = "";
+  const languageManager = GtkSource.LanguageManager.get_default();
+  const jsonLanguage = languageManager.get_language("json");
 
-  const textBuffer = new Gtk.TextBuffer();
-  const tagTable = textBuffer.get_tag_table();
-  const tagPunctuation = new Gtk.TextTag({ name: "punctuation", foreground: COLORS.punctuation });
-  const tagKey = new Gtk.TextTag({ name: "key", foreground: COLORS.key });
-  const tagString = new Gtk.TextTag({ name: "string", foreground: COLORS.string });
-  const tagNumber = new Gtk.TextTag({ name: "number", foreground: COLORS.number });
-  const tagBoolean = new Gtk.TextTag({ name: "boolean", foreground: COLORS.boolean });
-  const tagNull = new Gtk.TextTag({ name: "null", foreground: COLORS.null });
-  tagTable.add(tagPunctuation);
-  tagTable.add(tagKey);
-  tagTable.add(tagString);
-  tagTable.add(tagNumber);
-  tagTable.add(tagBoolean);
-  tagTable.add(tagNull);
+  const schemeManager = GtkSource.StyleSchemeManager.get_default();
+  const getScheme = (candidates: string[]) => {
+    for (const id of candidates) {
+      try {
+        const s = schemeManager.get_scheme(id);
+        if (s) return s;
+      } catch {
+      }
+    }
+    return null;
+  };
 
-  const textView = new Gtk.TextView({
-    buffer: textBuffer,
+  const bodyBuffer = new GtkSource.Buffer();
+  try {
+    (bodyBuffer as any).highlight_matching_brackets = true;
+  } catch {
+  }
+  const adwStyleManager = Adw.StyleManager.get_default();
+  const applyThemeToBuffer = () => {
+    try {
+      const dark = Boolean((adwStyleManager as any).dark);
+      const scheme = dark
+        ? getScheme(["Adwaita-dark", "adwaita-dark", "oblivion", "cobalt", "kate"])
+        : getScheme(["Adwaita", "adwaita", "classic", "tango"]);
+      (bodyBuffer as any).style_scheme = scheme;
+    } catch {
+    }
+  };
+  applyThemeToBuffer();
+  try {
+    adwStyleManager.connect("notify::dark", applyThemeToBuffer);
+  } catch {
+  }
+
+  const bodyView = new GtkSource.View({
+    buffer: bodyBuffer,
     editable: false,
     monospace: true,
     wrap_mode: Gtk.WrapMode.WORD_CHAR,
@@ -92,265 +77,224 @@ export default function createResponsePage(): ResponsePage {
     top_margin: 12,
     bottom_margin: 12,
   });
-  const textScrolled = new Gtk.ScrolledWindow({
+  try {
+    bodyView.show_line_numbers = true;
+    bodyView.tab_width = 2;
+    bodyView.indent_width = 2;
+    bodyView.insert_spaces_instead_of_tabs = true;
+  } catch {
+  }
+  const bodyScrolled = new Gtk.ScrolledWindow({
     hexpand: true,
     vexpand: true,
   });
-  textScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  textScrolled.set_child(textView);
+  bodyScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
 
-  const rootStore = new Gio.ListStore({
-    item_type: (JsonNode as any).$gtype,
+  bodyScrolled.set_child(bodyView);
+
+  const headersList = new Gtk.ListBox({
+    css_classes: ["boxed-list"],
   });
+  headersList.selection_mode = Gtk.SelectionMode.NONE;
 
-  const createChildModel = (item: any) => {
-    const node = item as JsonNodeT;
-    if (!node.isContainer()) return null;
-
-    const store = new Gio.ListStore({ item_type: (JsonNode as any).$gtype });
-    if (node.kind === "array") {
-      for (let i = 0; i < node.value.length; i++) {
-        store.append(new JsonNode(`[${i}]`, node.value[i]));
-      }
-    } else {
-      for (const k of Object.keys(node.value)) {
-        store.append(new JsonNode(`"${k}"`, node.value[k]));
-      }
-    }
-    return store;
-  };
-
-  const treeModel = (Gtk.TreeListModel as any).new(
-    rootStore,
-    false,
-    false,
-    createChildModel,
-  ) as Gtk.TreeListModel;
-
-  const selection = new Gtk.SingleSelection({ model: treeModel });
-  const factory = new Gtk.SignalListItemFactory();
-
-  factory.connect("setup", (_f: any, listItem: any) => {
-    const expander = new Gtk.TreeExpander();
-    expander.hexpand = true;
-    expander.valign = Gtk.Align.START;
-
-    const rowBox = new Gtk.Box({
-      orientation: Gtk.Orientation.HORIZONTAL,
-      spacing: 6,
-      hexpand: true,
-    });
-    rowBox.valign = Gtk.Align.START;
-
-    const keyLabel = new Gtk.Label({
-      xalign: 0,
-      yalign: 0,
-      use_markup: true,
-      selectable: true,
-    });
-    keyLabel.valign = Gtk.Align.START;
-    const valueLabel = new Gtk.Label({
-      xalign: 0,
-      yalign: 0,
-      use_markup: true,
-      selectable: true,
-      hexpand: true,
-      wrap: true,
-      wrap_mode: Pango.WrapMode.WORD_CHAR,
-    });
-    valueLabel.valign = Gtk.Align.START;
-
-    rowBox.append(keyLabel);
-    rowBox.append(valueLabel);
-
-    (listItem as any)._keyLabel = keyLabel;
-    (listItem as any)._valueLabel = valueLabel;
-
-    expander.set_child(rowBox);
-    listItem.set_child(expander);
-  });
-
-  factory.connect("bind", (_f: any, listItem: any) => {
-    const row = listItem.get_item() as any;
-    const expander = listItem.get_child() as any;
-    expander.set_list_row(row);
-
-    const node = row.get_item() as JsonNodeT;
-    const keyLabel = (listItem as any)._keyLabel as Gtk.Label;
-    const valueLabel = (listItem as any)._valueLabel as Gtk.Label;
-
-    const keyText = node.key ? node.key : "";
-    if (keyText.length > 0) {
-      keyLabel.set_markup(span(keyText, COLORS.key) + span(":", COLORS.punctuation));
-      keyLabel.visible = true;
-    } else {
-      keyLabel.visible = false;
-    }
-
-    if (node.kind === "string") {
-      valueLabel.set_markup(span(JSON.stringify(node.value), COLORS.string));
-    } else if (node.kind === "number") {
-      valueLabel.set_markup(span(String(node.value), COLORS.number));
-    } else if (node.kind === "boolean") {
-      valueLabel.set_markup(span(String(node.value), COLORS.boolean));
-    } else if (node.kind === "null") {
-      valueLabel.set_markup(span("null", COLORS.null));
-    } else if (node.kind === "array") {
-      valueLabel.set_markup(
-        span("[", COLORS.punctuation) +
-          span(`…`, COLORS.punctuation) +
-          span("]", COLORS.punctuation),
-      );
-    } else if (node.kind === "object") {
-      valueLabel.set_markup(
-        span("{", COLORS.punctuation) +
-          span(`…`, COLORS.punctuation) +
-          span("}", COLORS.punctuation),
-      );
-    } else {
-      valueLabel.set_markup(span(String(node.value), COLORS.punctuation));
-    }
-  });
-
-  const listView = new Gtk.ListView({
-    model: selection,
-    factory,
+  const headersScrolled = new Gtk.ScrolledWindow({
     hexpand: true,
     vexpand: true,
   });
+  headersScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
+  headersScrolled.set_child(headersList);
 
-  const treeScrolled = new Gtk.ScrolledWindow({
+  const notebook = new Gtk.Notebook({
     hexpand: true,
     vexpand: true,
   });
-  treeScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  treeScrolled.set_child(listView);
+  try {
+    notebook.show_tabs = false;
+    notebook.show_border = false;
+  } catch {
+  }
 
-  stack.add_named(textScrolled, "text");
-  stack.add_named(treeScrolled, "tree");
+  const bodyTabLabel = new Gtk.Label({ label: "Body" });
+  const headersTabLabel = new Gtk.Label({ label: "Headers" });
+  notebook.append_page(bodyScrolled, bodyTabLabel);
+  notebook.append_page(headersScrolled, headersTabLabel);
 
-  const applyJsonHighlight = (text: string) => {
-    textBuffer.set_text(text, -1);
+  let updatingTabs = false;
+  const bodyTabButton = new Gtk.ToggleButton({ label: "Body" });
+  const headersTabButton = new Gtk.ToggleButton({ label: "Headers" });
 
-    const fullStart = textBuffer.get_start_iter();
-    const fullEnd = textBuffer.get_end_iter();
+  const setActiveTab = (index: number) => {
+    updatingTabs = true;
     try {
-      (textBuffer as any).remove_all_tags(fullStart, fullEnd);
+      notebook.set_current_page(index);
     } catch {
+      (notebook as any).page = index;
     }
-
-    const stringRanges: Array<{ start: number; end: number }> = [];
-    const reString = /\"(?:\\.|[^\"\\])*\"/g;
-    for (let m = reString.exec(text); m; m = reString.exec(text)) {
-      stringRanges.push({ start: m.index, end: m.index + m[0].length });
-    }
-    const inString = (pos: number) => {
-      for (const r of stringRanges) {
-        if (pos >= r.start && pos < r.end) return true;
-      }
-      return false;
-    };
-
-    const iterAt = (offset: number) => (textBuffer as any).get_iter_at_offset(offset);
-
-    for (const r of stringRanges) {
-      const after = text.slice(r.end);
-      const isKey = /^\s*:/.test(after);
-      textBuffer.apply_tag(isKey ? tagKey : tagString, iterAt(r.start), iterAt(r.end));
-    }
-
-    const reNumber = /-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g;
-    for (let m = reNumber.exec(text); m; m = reNumber.exec(text)) {
-      if (inString(m.index)) continue;
-      textBuffer.apply_tag(tagNumber, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    const reBool = /\btrue\b|\bfalse\b/g;
-    for (let m = reBool.exec(text); m; m = reBool.exec(text)) {
-      if (inString(m.index)) continue;
-      textBuffer.apply_tag(tagBoolean, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    const reNull = /\bnull\b/g;
-    for (let m = reNull.exec(text); m; m = reNull.exec(text)) {
-      if (inString(m.index)) continue;
-      textBuffer.apply_tag(tagNull, iterAt(m.index), iterAt(m.index + m[0].length));
-    }
-
-    for (let i = 0; i < text.length; i++) {
-      if (inString(i)) continue;
-      const ch = text[i];
-      if (ch === "{" || ch === "}" || ch === "[" || ch === "]" || ch === ":" || ch === ",") {
-        textBuffer.apply_tag(tagPunctuation, iterAt(i), iterAt(i + 1));
-      }
-    }
+    bodyTabButton.active = index === 0;
+    headersTabButton.active = index === 1;
+    updatingTabs = false;
   };
 
-  const setViewMode = (mode: "tree" | "raw") => {
-    viewMode = mode;
-    stack.visible_child_name = mode === "raw" ? "text" : "tree";
-  };
+  bodyTabButton.connect("toggled", () => {
+    if (updatingTabs) return;
+    if (bodyTabButton.active) setActiveTab(0);
+    else bodyTabButton.active = true;
+  });
+  headersTabButton.connect("toggled", () => {
+    if (updatingTabs) return;
+    if (headersTabButton.active) setActiveTab(1);
+    else headersTabButton.active = true;
+  });
 
-  const copyRawToClipboard = () => {
+  notebook.connect("switch-page", (_nb: any, _page: any, pageNum: number) => {
+    if (updatingTabs) return;
+    updatingTabs = true;
+    bodyTabButton.active = pageNum === 0;
+    headersTabButton.active = pageNum === 1;
+    updatingTabs = false;
+  });
+
+  const tabButtons = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 6,
+    halign: Gtk.Align.START,
+  });
+  tabButtons.append(bodyTabButton);
+  tabButtons.append(headersTabButton);
+  setActiveTab(0);
+
+  const statusLine = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 10,
+    halign: Gtk.Align.END,
+  });
+
+  const statusLabel = new Gtk.Label({ xalign: 0, use_markup: true, label: "" });
+  const durationLabel = new Gtk.Label({ xalign: 0, label: "" });
+  durationLabel.css_classes = ["dim-label"];
+  const sizeLabel = new Gtk.Label({ xalign: 0, label: "" });
+  sizeLabel.css_classes = ["dim-label"];
+
+  statusLine.append(statusLabel);
+  statusLine.append(durationLabel);
+  statusLine.append(sizeLabel);
+
+  const tabRow = new Gtk.CenterBox({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    margin_top: 6,
+    margin_bottom: 6,
+  });
+  tabRow.set_start_widget(tabButtons);
+  tabRow.set_end_widget(statusLine);
+
+  root.append(tabRow);
+  root.append(notebook);
+
+  const setBody = (text: string, opts: { isJson?: boolean } = {}) => {
+    bodyBuffer.set_text(String(text ?? ""), -1);
     try {
-      const start = textBuffer.get_start_iter();
-      const end = textBuffer.get_end_iter();
-      textBuffer.select_range(start, end);
-      (textView as any).copy_clipboard?.();
+      if (opts.isJson) {
+        (bodyBuffer as any).language = jsonLanguage;
+        (bodyBuffer as any).highlight_syntax = true;
+      } else {
+        (bodyBuffer as any).language = null;
+        (bodyBuffer as any).highlight_syntax = false;
+      }
     } catch {
     }
   };
 
-  stack.visible_child_name = "tree";
+  const setMeta = (meta: {
+    status: number | string;
+    statusText?: string;
+    durationMs?: number;
+    sizeBytes?: number;
+  }) => {
+    const codeStr = String(meta.status);
+    const c = typeof meta.status === "number" ? meta.status : Number(meta.status);
+    let color = "#D4D4D4";
+    if (!Number.isNaN(c)) {
+      if (c >= 200 && c < 300) color = "#6A9955";
+      else if (c >= 300 && c < 400) color = "#569CD6";
+      else if (c >= 400 && c < 500) color = "#F44747";
+      else if (c >= 500 && c < 600) color = "#C586C0";
+    }
+    const t = meta.statusText ? `HTTP ${codeStr} ${meta.statusText}` : `HTTP ${codeStr}`;
+    statusLabel.set_markup(`<span foreground="${color}">●</span> <span foreground="${color}">${esc(t)}</span>`);
+
+    if (typeof meta.durationMs === "number") durationLabel.label = `${Math.round(meta.durationMs)} ms`;
+    else durationLabel.label = "";
+
+    if (typeof meta.sizeBytes === "number") sizeLabel.label = `${(meta.sizeBytes / 1024).toFixed(1)} KB`;
+    else sizeLabel.label = "";
+  };
 
   const setText = (text: string) => {
-    rawText = text;
-    applyJsonHighlight(text);
-    setViewMode("raw");
+    setBody(text, { isJson: false });
+    setActiveTab(0);
   };
 
   const setJson = (value: unknown) => {
-    rootStore.remove_all();
-
     try {
-      rawText = JSON.stringify(value, null, 2);
+      setBody(JSON.stringify(value, null, 2), { isJson: true });
     } catch {
-      rawText = String(value);
+      setBody(String(value), { isJson: false });
     }
-    applyJsonHighlight(rawText);
-
-    setViewMode(viewMode);
-
-    if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        rootStore.append(new JsonNode(`[${i}]`, value[i]));
-      }
-      return;
-    }
-
-    if (value && typeof value === "object") {
-      for (const k of Object.keys(value as any)) {
-        rootStore.append(new JsonNode(`"${k}"`, (value as any)[k]));
-      }
-      return;
-    }
-
-    rootStore.append(new JsonNode("", value));
+    setActiveTab(0);
   };
 
   const setError = (message: string) => {
-    rawText = message;
-    applyJsonHighlight(message);
-    setViewMode("raw");
+    setBody(message, { isJson: false });
+    setActiveTab(0);
+  };
+
+  const setHeaders = (headers: Record<string, string>) => {
+    while (true) {
+      const child = headersList.get_first_child();
+      if (!child) break;
+      headersList.remove(child);
+    }
+
+    const keys = Object.keys(headers).sort((a, b) => a.localeCompare(b));
+    for (const k of keys) {
+      const row = new Gtk.ListBoxRow();
+      row.selectable = false;
+      row.activatable = false;
+
+      const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+        margin_top: 10,
+        margin_bottom: 10,
+        margin_start: 12,
+        margin_end: 12,
+      });
+
+      const keyLabel = new Gtk.Label({ label: k, xalign: 0 });
+      keyLabel.css_classes = ["dim-label"];
+
+      const valueLabel = new Gtk.Label({
+        label: String(headers[k] ?? ""),
+        xalign: 0,
+        wrap: true,
+        wrap_mode: Pango.WrapMode.WORD_CHAR,
+        selectable: true,
+      });
+
+      box.append(keyLabel);
+      box.append(valueLabel);
+
+      row.set_child(box);
+      headersList.append(row);
+    }
   };
 
   return {
-    widget: stack,
+    widget: root,
     setText,
     setJson,
     setError,
-    setViewMode,
-    getViewMode: () => viewMode,
-    copyRawToClipboard,
+    setHeaders,
+    setMeta,
   };
 }

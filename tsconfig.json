@@ -1,7 +1,7 @@
 {
 	"compilerOptions": {
 		"lib": ["ESNext"],
-		"types": ["@girs/gjs", "@girs/adw-1", "@girs/gtk-4.0", "@girs/soup-3.0"],
+		"types": ["@girs/gjs", "@girs/adw-1", "@girs/gtk-4.0", "@girs/gtksource-5", "@girs/soup-3.0"],
 		"target": "ESNext",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
