@@ -41,8 +41,8 @@ const onActivate = (app: Adw.Application) => {
   const window = new Adw.ApplicationWindow({
     application: app,
     title: "Zirest",
-    default_width: 640,
-    default_height: 480,
+    default_width: 960,
+    default_height: 640,
   });
 
 
