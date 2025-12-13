@@ -1,4 +1,3 @@
-import Adw from "gi://Adw";
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
@@ -89,22 +88,64 @@ export default function createResponsePage(): ResponsePage {
   headersScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
   headersScrolled.set_child(headersList);
 
-  const viewStack = new Adw.ViewStack();
-  viewStack.hexpand = true;
-  viewStack.vexpand = true;
-  viewStack.add_titled(bodyScrolled, "body", "Body");
-  viewStack.add_titled(headersScrolled, "headers", "Headers");
-  viewStack.visible_child_name = "body";
-
+  const notebook = new Gtk.Notebook({
+    hexpand: true,
+    vexpand: true,
+  });
   try {
-    const bodyPage = (viewStack as any).get_page?.(bodyScrolled);
-    const headersPage = (viewStack as any).get_page?.(headersScrolled);
-    if (bodyPage) bodyPage.icon_name = null;
-    if (headersPage) headersPage.icon_name = null;
+    (notebook as any).show_tabs = false;
+    (notebook as any).show_border = false;
   } catch {
   }
 
-  const switcher = new Adw.ViewSwitcher({ stack: viewStack });
+  const bodyTabLabel = new Gtk.Label({ label: "Body" });
+  const headersTabLabel = new Gtk.Label({ label: "Headers" });
+  notebook.append_page(bodyScrolled, bodyTabLabel);
+  notebook.append_page(headersScrolled, headersTabLabel);
+
+  let updatingTabs = false;
+  const bodyTabButton = new Gtk.ToggleButton({ label: "Body" });
+  const headersTabButton = new Gtk.ToggleButton({ label: "Headers" });
+
+  const setActiveTab = (index: number) => {
+    updatingTabs = true;
+    try {
+      notebook.set_current_page(index);
+    } catch {
+      (notebook as any).page = index;
+    }
+    bodyTabButton.active = index === 0;
+    headersTabButton.active = index === 1;
+    updatingTabs = false;
+  };
+
+  bodyTabButton.connect("toggled", () => {
+    if (updatingTabs) return;
+    if (bodyTabButton.active) setActiveTab(0);
+    else bodyTabButton.active = true;
+  });
+  headersTabButton.connect("toggled", () => {
+    if (updatingTabs) return;
+    if (headersTabButton.active) setActiveTab(1);
+    else headersTabButton.active = true;
+  });
+
+  notebook.connect("switch-page", (_nb: any, _page: any, pageNum: number) => {
+    if (updatingTabs) return;
+    updatingTabs = true;
+    bodyTabButton.active = pageNum === 0;
+    headersTabButton.active = pageNum === 1;
+    updatingTabs = false;
+  });
+
+  const tabButtons = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 6,
+    halign: Gtk.Align.START,
+  });
+  tabButtons.append(bodyTabButton);
+  tabButtons.append(headersTabButton);
+  setActiveTab(0);
 
   const statusLine = new Gtk.Box({
     orientation: Gtk.Orientation.HORIZONTAL,
@@ -127,11 +168,11 @@ export default function createResponsePage(): ResponsePage {
     margin_top: 6,
     margin_bottom: 6,
   });
-  tabRow.set_start_widget(switcher);
+  tabRow.set_start_widget(tabButtons);
   tabRow.set_end_widget(statusLine);
 
   root.append(tabRow);
-  root.append(viewStack);
+  root.append(notebook);
 
   const applyJsonHighlight = (text: string) => {
     bodyBuffer.set_text(text, -1);
@@ -217,7 +258,7 @@ export default function createResponsePage(): ResponsePage {
 
   const setText = (text: string) => {
     applyJsonHighlight(text);
-    viewStack.visible_child_name = "body";
+    setActiveTab(0);
   };
 
   const setJson = (value: unknown) => {
@@ -226,12 +267,12 @@ export default function createResponsePage(): ResponsePage {
     } catch {
       applyJsonHighlight(String(value));
     }
-    viewStack.visible_child_name = "body";
+    setActiveTab(0);
   };
 
   const setError = (message: string) => {
     applyJsonHighlight(message);
-    viewStack.visible_child_name = "body";
+    setActiveTab(0);
   };
 
   const setHeaders = (headers: Record<string, string>) => {
