@@ -103,24 +103,12 @@ export default function createResponsePage(): ResponsePage {
   const treeModel = (Gtk.TreeListModel as any).new(
     rootStore,
     false,
-    true,
+    false,
     createChildModel,
   ) as Gtk.TreeListModel;
 
   const selection = new Gtk.SingleSelection({ model: treeModel });
   const factory = new Gtk.SignalListItemFactory();
-
-  factory.connect("unbind", (_f: any, listItem: any) => {
-    const row = listItem.get_item?.() as any;
-    const handler = (listItem as any)._expandedHandler as number | undefined;
-    if (row && typeof handler === "number") {
-      try {
-        row.disconnect(handler);
-      } catch {
-      }
-    }
-    (listItem as any)._expandedHandler = undefined;
-  });
 
   factory.connect("setup", (_f: any, listItem: any) => {
     const expander = new Gtk.TreeExpander();
@@ -188,51 +176,17 @@ export default function createResponsePage(): ResponsePage {
     } else if (node.kind === "null") {
       valueLabel.set_markup(span("null", COLORS.null));
     } else if (node.kind === "array") {
-      const render = () => {
-        const expanded =
-          typeof row.get_expanded === "function" ? row.get_expanded() : Boolean(row.expanded);
-        if (expanded) valueLabel.set_markup("");
-        else {
-          valueLabel.set_markup(
-            span("[", COLORS.punctuation) +
-              span(`…`, COLORS.punctuation) +
-              span("]", COLORS.punctuation),
-          );
-        }
-      };
-
-      const prevHandler = (listItem as any)._expandedHandler as number | undefined;
-      if (typeof prevHandler === "number") {
-        try {
-          row.disconnect(prevHandler);
-        } catch {
-        }
-      }
-      (listItem as any)._expandedHandler = row.connect("notify::expanded", render);
-      render();
+      valueLabel.set_markup(
+        span("[", COLORS.punctuation) +
+          span(`…`, COLORS.punctuation) +
+          span("]", COLORS.punctuation),
+      );
     } else if (node.kind === "object") {
-      const render = () => {
-        const expanded =
-          typeof row.get_expanded === "function" ? row.get_expanded() : Boolean(row.expanded);
-        if (expanded) valueLabel.set_markup("");
-        else {
-          valueLabel.set_markup(
-            span("{", COLORS.punctuation) +
-              span(`…`, COLORS.punctuation) +
-              span("}", COLORS.punctuation),
-          );
-        }
-      };
-
-      const prevHandler = (listItem as any)._expandedHandler as number | undefined;
-      if (typeof prevHandler === "number") {
-        try {
-          row.disconnect(prevHandler);
-        } catch {
-        }
-      }
-      (listItem as any)._expandedHandler = row.connect("notify::expanded", render);
-      render();
+      valueLabel.set_markup(
+        span("{", COLORS.punctuation) +
+          span(`…`, COLORS.punctuation) +
+          span("}", COLORS.punctuation),
+      );
     } else {
       valueLabel.set_markup(span(String(node.value), COLORS.punctuation));
     }
