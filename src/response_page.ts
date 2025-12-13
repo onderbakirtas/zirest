@@ -1,4 +1,5 @@
 import GLib from "gi://GLib";
+import Adw from "gi://Adw";
 import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
 import GtkSource from "gi://GtkSource?version=5";
@@ -27,26 +28,14 @@ export default function createResponsePage(): ResponsePage {
     vexpand: true,
   });
 
-  const languageManager = GtkSource.LanguageManager?.get_default?.();
-  const jsonLanguage = languageManager ? languageManager.get_language?.("json") : null;
+  const languageManager = GtkSource.LanguageManager.get_default();
+  const jsonLanguage = languageManager.get_language("json");
 
-  const styleManager = GtkSource.StyleSchemeManager?.get_default?.();
-
-  log(styleManager)
-
-  const getDarkScheme = () => {
-    const candidates = [
-      "Adwaita-dark",
-      "adwaita-dark",
-      "Adwaita Dark",
-      "oblivion",
-      "cobalt",
-      "kate",
-      "tango",
-    ];
+  const schemeManager = GtkSource.StyleSchemeManager.get_default();
+  const getScheme = (candidates: string[]) => {
     for (const id of candidates) {
       try {
-        const s = styleManager?.get_scheme?.(id);
+        const s = schemeManager.get_scheme(id);
         if (s) return s;
       } catch {
       }
@@ -59,9 +48,20 @@ export default function createResponsePage(): ResponsePage {
     (bodyBuffer as any).highlight_matching_brackets = true;
   } catch {
   }
+  const adwStyleManager = Adw.StyleManager.get_default();
+  const applyThemeToBuffer = () => {
+    try {
+      const dark = Boolean((adwStyleManager as any).dark);
+      const scheme = dark
+        ? getScheme(["Adwaita-dark", "adwaita-dark", "oblivion", "cobalt", "kate"])
+        : getScheme(["Adwaita", "adwaita", "classic", "tango"]);
+      (bodyBuffer as any).style_scheme = scheme;
+    } catch {
+    }
+  };
+  applyThemeToBuffer();
   try {
-    const scheme = getDarkScheme();
-    if (scheme) (bodyBuffer as any).style_scheme = scheme;
+    adwStyleManager.connect("notify::dark", applyThemeToBuffer);
   } catch {
   }
 

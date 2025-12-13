@@ -7,6 +7,7 @@ import Adw from "gi://Adw";
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk?version=4.0";
 import Pango from "gi://Pango";
+import GtkSource from "gi://GtkSource?version=5";
 import createInputBar from "./src/inputbar";
 import createResponsePage from "./src/response_page";
 import createRequestBodyPanel from "./src/request_body";
@@ -25,7 +26,16 @@ const app = new Adw.Application({
 });
 
 const AdwStyleManager = Adw.StyleManager.get_default();
-AdwStyleManager.colorScheme = Adw.ColorScheme.FORCE_DARK;
+AdwStyleManager.colorScheme = Adw.ColorScheme.DEFAULT;
+
+try {
+  const ssm = (GtkSource as any).StyleSchemeManager?.get_default
+    ? (GtkSource as any).StyleSchemeManager.get_default()
+    : (GtkSource as any).StyleSchemeManager?.get_default?.();
+  const ids: string[] = (ssm?.get_scheme_ids?.() ?? []).slice().sort();
+  log(`GtkSource schemes (${ids.length}):\n${ids.map((x) => `- ${x}`).join("\n")}`);
+} catch {
+}
 
 const onActivate = (app: Adw.Application) => {
   const window = new Adw.ApplicationWindow({
