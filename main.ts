@@ -4,12 +4,13 @@
  */
 
 import Adw from "gi://Adw";
-import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk?version=4.0";
+import Pango from "gi://Pango";
 import createInputBar from "./src/inputbar";
 import createResponsePage from "./src/response_page";
 import { httpRequest } from "./src/http";
+import { addRequestHistoryItem, loadRequestHistory, RequestHistoryItem } from "./src/history";
 
 // const _loop = GLib.MainLoop.new(null, false);
 
@@ -40,9 +41,30 @@ const onActivate = (app: Adw.Application) => {
     title_widget: new Gtk.Label({ label: "Zirest" }),
   });
 
-  const backButton = new Gtk.Button({ icon_name: "go-previous-symbolic" });
-  backButton.visible = false;
-  header.pack_start(backButton);
+  const historyButton = new Gtk.MenuButton({ icon_name: "document-open-recent-symbolic" });
+  header.pack_start(historyButton);
+
+  const historyPopover = new Gtk.Popover();
+  historyButton.set_popover(historyPopover);
+
+  const historyList = new Gtk.ListBox();
+  historyList.selection_mode = Gtk.SelectionMode.NONE;
+
+  const historyScrolled = new Gtk.ScrolledWindow({
+    hexpand: true,
+    vexpand: false,
+  });
+  historyScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
+  (historyScrolled as any).set_min_content_width?.(420);
+  (historyScrolled as any).set_min_content_height?.(260);
+  (historyScrolled as any).set_max_content_height?.(260);
+  try {
+    (historyScrolled as any).propagate_natural_height = true;
+  } catch {
+  }
+  historyScrolled.set_child(historyList);
+
+  historyPopover.set_child(historyScrolled);
 
   // const handle = new Gtk.WindowHandle();
 
@@ -142,53 +164,115 @@ const onActivate = (app: Adw.Application) => {
     statusTextLabel.label = text;
   };
 
-  const showEmpty = () => {
-    contentStack.visible_child_name = "empty";
-    backButton.visible = false;
-  };
-
   const showResponse = () => {
     contentStack.visible_child_name = "response";
-    backButton.visible = true;
   };
 
-  backButton.connect("clicked", showEmpty);
+  const formatHistoryDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  };
 
-  root.append(
-    createInputBar({
-      onSend: (method, url) => {
-        void (async () => {
-          showResponse();
+  let historyItems: RequestHistoryItem[] = loadRequestHistory();
 
-          setStatus("…", "Loading");
-          durationLabel.label = "";
-          sizeLabel.label = "";
+  const renderHistory = () => {
+    while (true) {
+      const child = historyList.get_first_child();
+      if (!child) break;
+      historyList.remove(child);
+    }
 
-          responsePage.setText("Loading...\n" + method + " " + url);
+    if (historyItems.length === 0) {
+      const row = new Gtk.ListBoxRow();
+      row.set_child(new Gtk.Label({ label: "No history", xalign: 0 }));
+      row.selectable = false;
+      row.activatable = false;
+      historyList.append(row);
+      return;
+    }
+
+    for (const item of historyItems) {
+      const row = new Gtk.ListBoxRow();
+      row.selectable = false;
+      row.activatable = false;
+
+      const btn = new Gtk.Button({
+        css_classes: ["flat"],
+      });
+      btn.hexpand = true;
+      btn.halign = Gtk.Align.FILL;
+
+      const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 2,
+        margin_top: 6,
+        margin_bottom: 6,
+        margin_start: 10,
+        margin_end: 10,
+      });
+
+      const top = new Gtk.Label({ label: `${item.method.toUpperCase()} ${item.url}`, xalign: 0 });
+      top.ellipsize = Pango.EllipsizeMode.END;
+
+      const bottom = new Gtk.Label({ label: formatHistoryDate(item.at), xalign: 0 });
+      bottom.css_classes = ["dim-label"];
+
+      box.append(top);
+      box.append(bottom);
+
+      btn.set_child(box);
+      btn.connect("clicked", () => {
+        inputBar.setRequest(item.method, item.url);
+        historyPopover.popdown();
+      });
+
+      row.set_child(btn);
+      historyList.append(row);
+    }
+  };
+
+  const inputBar = createInputBar({
+    onSend: (method, url) => {
+      historyItems = addRequestHistoryItem({ method, url });
+      renderHistory();
+
+      void (async () => {
+        showResponse();
+
+        setStatus("…", "Loading");
+        durationLabel.label = "";
+        sizeLabel.label = "";
+
+        responsePage.setText("Loading...\n" + method + " " + url);
+
+        try {
+          const res = await httpRequest(url, { method });
+          const text = await res.text();
+
+          setStatus(res.status, res.statusText);
+          durationLabel.label = `${Math.round(res.durationMs)} ms`;
+          sizeLabel.label = `${(res.sizeBytes / 1024).toFixed(1)} KB`;
 
           try {
-            const res = await httpRequest(url, { method });
-            const text = await res.text();
-
-            setStatus(res.status, res.statusText);
-            durationLabel.label = `${Math.round(res.durationMs)} ms`;
-            sizeLabel.label = `${(res.sizeBytes / 1024).toFixed(1)} KB`;
-
-            try {
-              responsePage.setJson(JSON.parse(text));
-            } catch {
-              responsePage.setText(text);
-            }
-          } catch (e) {
-            setStatus("ERR", "Error");
-            durationLabel.label = "";
-            sizeLabel.label = "";
-            responsePage.setError(String(e));
+            responsePage.setJson(JSON.parse(text));
+          } catch {
+            responsePage.setText(text);
           }
-        })();
-      },
-    }),
-  );
+        } catch (e) {
+          setStatus("ERR", "Error");
+          durationLabel.label = "";
+          sizeLabel.label = "";
+          responsePage.setError(String(e));
+        }
+      })();
+    },
+  });
+
+  renderHistory();
+  root.append(inputBar.widget);
 
   root.append(contentStack);
   root.append(statusBar);

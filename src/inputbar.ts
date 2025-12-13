@@ -1,5 +1,11 @@
 import Gtk from "gi://Gtk?version=4.0";
 
+export type InputBar = {
+  widget: Gtk.Widget;
+  setRequest: (method: string, url: string) => void;
+  getRequest: () => { method: string; url: string };
+};
+
 type InputBarOptions = {
   onSend?: (method: string, url: string) => void;
 };
@@ -13,13 +19,8 @@ export default function createInputBar(options: InputBarOptions = {}) {
     css_classes: ["linked"],
   });
 
-  const crudDropDown = Gtk.DropDown.new_from_strings([
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-  ]);
+  const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+  const crudDropDown = Gtk.DropDown.new_from_strings(methods);
 
   const entry = new Gtk.Entry({
     hexpand: true,
@@ -42,8 +43,25 @@ export default function createInputBar(options: InputBarOptions = {}) {
     return String(anyItem);
   };
 
+  const getUrl = () => {
+    const anyEntry = entry as any;
+    return anyEntry.get_text ? anyEntry.get_text() : anyEntry.text;
+  };
+
+  const setUrl = (url: string) => {
+    const anyEntry = entry as any;
+    if (typeof anyEntry.set_text === "function") anyEntry.set_text(url);
+    else anyEntry.text = url;
+  };
+
+  const setMethod = (method: string) => {
+    const m = String(method ?? "GET").toUpperCase();
+    const idx = methods.indexOf(m);
+    if (idx >= 0) crudDropDown.set_selected(idx);
+  };
+
   const triggerSend = () => {
-    const url = (entry as any).get_text ? (entry as any).get_text() : (entry as any).text;
+    const url = getUrl();
     options.onSend?.(getSelectedMethod(), String(url ?? ""));
   };
 
@@ -54,5 +72,16 @@ export default function createInputBar(options: InputBarOptions = {}) {
   box.append(entry);
   box.append(actionButton);
 
-  return box;
+  return {
+    widget: box,
+    setRequest: (method: string, url: string) => {
+      setMethod(method);
+      setUrl(url);
+      try {
+        (entry as any).grab_focus?.();
+      } catch {
+      }
+    },
+    getRequest: () => ({ method: getSelectedMethod(), url: String(getUrl() ?? "") }),
+  } satisfies InputBar;
 }
