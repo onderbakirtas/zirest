@@ -51,10 +51,36 @@ export default function createRequestBodyPanel(): RequestBodyPanel {
   const languageManager = (GtkSource as any).LanguageManager?.get_default?.();
   const jsonLanguage = languageManager ? languageManager.get_language?.("json") : null;
 
+  const styleManager = (GtkSource as any).StyleSchemeManager?.get_default?.();
+  const getDarkScheme = () => {
+    const candidates = [
+      "Adwaita-dark",
+      "adwaita-dark",
+      "Adwaita Dark",
+      "oblivion",
+      "cobalt",
+      "kate",
+      "tango",
+    ];
+    for (const id of candidates) {
+      try {
+        const s = styleManager?.get_scheme?.(id);
+        if (s) return s;
+      } catch {
+      }
+    }
+    return null;
+  };
+
   const buffer = new (GtkSource as any).Buffer();
   try {
     (buffer as any).highlight_syntax = false;
     (buffer as any).highlight_matching_brackets = true;
+  } catch {
+  }
+  try {
+    const scheme = getDarkScheme();
+    if (scheme) (buffer as any).style_scheme = scheme;
   } catch {
   }
 

@@ -27,16 +27,45 @@ export default function createResponsePage(): ResponsePage {
     vexpand: true,
   });
 
-  const languageManager = (GtkSource as any).LanguageManager?.get_default?.();
+  const languageManager = GtkSource.LanguageManager?.get_default?.();
   const jsonLanguage = languageManager ? languageManager.get_language?.("json") : null;
 
-  const bodyBuffer = new (GtkSource as any).Buffer();
+  const styleManager = GtkSource.StyleSchemeManager?.get_default?.();
+
+  log(styleManager)
+
+  const getDarkScheme = () => {
+    const candidates = [
+      "Adwaita-dark",
+      "adwaita-dark",
+      "Adwaita Dark",
+      "oblivion",
+      "cobalt",
+      "kate",
+      "tango",
+    ];
+    for (const id of candidates) {
+      try {
+        const s = styleManager?.get_scheme?.(id);
+        if (s) return s;
+      } catch {
+      }
+    }
+    return null;
+  };
+
+  const bodyBuffer = new GtkSource.Buffer();
   try {
     (bodyBuffer as any).highlight_matching_brackets = true;
   } catch {
   }
+  try {
+    const scheme = getDarkScheme();
+    if (scheme) (bodyBuffer as any).style_scheme = scheme;
+  } catch {
+  }
 
-  const bodyView = new (GtkSource as any).View({
+  const bodyView = new GtkSource.View({
     buffer: bodyBuffer,
     editable: false,
     monospace: true,
@@ -49,10 +78,10 @@ export default function createResponsePage(): ResponsePage {
     bottom_margin: 12,
   });
   try {
-    (bodyView as any).show_line_numbers = true;
-    (bodyView as any).tab_width = 2;
-    (bodyView as any).indent_width = 2;
-    (bodyView as any).insert_spaces_instead_of_tabs = true;
+    bodyView.show_line_numbers = true;
+    bodyView.tab_width = 2;
+    bodyView.indent_width = 2;
+    bodyView.insert_spaces_instead_of_tabs = true;
   } catch {
   }
   const bodyScrolled = new Gtk.ScrolledWindow({
@@ -80,8 +109,8 @@ export default function createResponsePage(): ResponsePage {
     vexpand: true,
   });
   try {
-    (notebook as any).show_tabs = false;
-    (notebook as any).show_border = false;
+    notebook.show_tabs = false;
+    notebook.show_border = false;
   } catch {
   }
 
