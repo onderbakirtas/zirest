@@ -10,7 +10,12 @@ import Pango from "gi://Pango";
 import createInputBar from "./src/inputbar";
 import createResponsePage from "./src/response_page";
 import { httpRequest } from "./src/http";
-import { addRequestHistoryItem, loadRequestHistory, RequestHistoryItem } from "./src/history";
+import {
+  addRequestHistoryItem,
+  loadRequestHistory,
+  RequestHistoryItem,
+  saveRequestHistory,
+} from "./src/history";
 
 // const _loop = GLib.MainLoop.new(null, false);
 
@@ -47,6 +52,21 @@ const onActivate = (app: Adw.Application) => {
   const historyPopover = new Gtk.Popover();
   historyButton.set_popover(historyPopover);
 
+  const historyPopoverRoot = new Gtk.Box({
+    orientation: Gtk.Orientation.VERTICAL,
+    spacing: 8,
+    margin_top: 10,
+    margin_bottom: 10,
+    margin_start: 10,
+    margin_end: 10,
+  });
+
+  const historySearch = new Gtk.SearchEntry({
+    placeholder_text: "Search",
+  });
+
+  historyPopoverRoot.append(historySearch);
+
   const historyList = new Gtk.ListBox();
   historyList.selection_mode = Gtk.SelectionMode.NONE;
 
@@ -64,7 +84,8 @@ const onActivate = (app: Adw.Application) => {
   }
   historyScrolled.set_child(historyList);
 
-  historyPopover.set_child(historyScrolled);
+  historyPopoverRoot.append(historyScrolled);
+  historyPopover.set_child(historyPopoverRoot);
 
   // const handle = new Gtk.WindowHandle();
 
@@ -176,7 +197,10 @@ const onActivate = (app: Adw.Application) => {
     }
   };
 
+  const escMarkup = (s: string) => GLib.markup_escape_text(s, -1);
+
   let historyItems: RequestHistoryItem[] = loadRequestHistory();
+  let historyQuery = "";
 
   const renderHistory = () => {
     while (true) {
@@ -185,54 +209,84 @@ const onActivate = (app: Adw.Application) => {
       historyList.remove(child);
     }
 
-    if (historyItems.length === 0) {
+    const q = historyQuery.trim().toLowerCase();
+    const visibleItems = q
+      ? historyItems.filter((x) => {
+          const m = String(x.method ?? "").toLowerCase();
+          const u = String(x.url ?? "").toLowerCase();
+          return m.includes(q) || u.includes(q);
+        })
+      : historyItems;
+
+    if (visibleItems.length === 0) {
       const row = new Gtk.ListBoxRow();
-      row.set_child(new Gtk.Label({ label: "No history", xalign: 0 }));
+      row.set_child(new Gtk.Label({ label: q ? "No matches" : "No history", xalign: 0 }));
       row.selectable = false;
       row.activatable = false;
       historyList.append(row);
       return;
     }
 
-    for (const item of historyItems) {
+    for (const item of visibleItems) {
       const row = new Gtk.ListBoxRow();
       row.selectable = false;
       row.activatable = false;
 
-      const btn = new Gtk.Button({
-        css_classes: ["flat"],
+      const rowBox = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 8,
       });
-      btn.hexpand = true;
-      btn.halign = Gtk.Align.FILL;
 
-      const box = new Gtk.Box({
+      const selectBtn = new Gtk.Button({ css_classes: ["flat"] });
+      selectBtn.hexpand = true;
+      selectBtn.halign = Gtk.Align.FILL;
+
+      const textBox = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 2,
-        margin_top: 6,
-        margin_bottom: 6,
-        margin_start: 10,
-        margin_end: 10,
       });
+      textBox.hexpand = true;
 
-      const top = new Gtk.Label({ label: `${item.method.toUpperCase()} ${item.url}`, xalign: 0 });
+      const top = new Gtk.Label({ use_markup: true, xalign: 0 });
+      top.set_markup(`<b>${escMarkup(`${item.method.toUpperCase()} ${item.url}`)}</b>`);
       top.ellipsize = Pango.EllipsizeMode.END;
 
       const bottom = new Gtk.Label({ label: formatHistoryDate(item.at), xalign: 0 });
       bottom.css_classes = ["dim-label"];
 
-      box.append(top);
-      box.append(bottom);
+      textBox.append(top);
+      textBox.append(bottom);
+      selectBtn.set_child(textBox);
 
-      btn.set_child(box);
-      btn.connect("clicked", () => {
+      selectBtn.connect("clicked", () => {
         inputBar.setRequest(item.method, item.url);
         historyPopover.popdown();
       });
 
-      row.set_child(btn);
+      const removeBtn = new Gtk.Button({
+        css_classes: ["flat"],
+        icon_name: "window-close-symbolic",
+      });
+      removeBtn.valign = Gtk.Align.CENTER;
+      removeBtn.connect("clicked", () => {
+        historyItems = historyItems.filter(
+          (x) => !(String(x.method) === String(item.method) && String(x.url) === String(item.url)),
+        );
+        saveRequestHistory(historyItems);
+        renderHistory();
+      });
+
+      rowBox.append(selectBtn);
+      rowBox.append(removeBtn);
+      row.set_child(rowBox);
       historyList.append(row);
     }
   };
+
+  historySearch.connect("search-changed", () => {
+    historyQuery = (historySearch as any).get_text ? (historySearch as any).get_text() : "";
+    renderHistory();
+  });
 
   const inputBar = createInputBar({
     onSend: (method, url) => {
