@@ -60,6 +60,12 @@ const onActivate = (app: Adw.Application) => {
     margin_start: 10,
     margin_end: 10,
   });
+  historyPopoverRoot.halign = Gtk.Align.FILL;
+  historyPopoverRoot.hexpand = true;
+  try {
+    (historyPopoverRoot as any).set_size_request?.(520, -1);
+  } catch {
+  }
 
   const historySearch = new Gtk.SearchEntry({
     placeholder_text: "Search",
@@ -74,8 +80,13 @@ const onActivate = (app: Adw.Application) => {
     hexpand: true,
     vexpand: false,
   });
+  historyScrolled.halign = Gtk.Align.FILL;
   historyScrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-  (historyScrolled as any).set_min_content_width?.(420);
+  (historyScrolled as any).set_min_content_width?.(520);
+  try {
+    (historyScrolled as any).set_size_request?.(520, -1);
+  } catch {
+  }
   (historyScrolled as any).set_min_content_height?.(260);
   (historyScrolled as any).set_max_content_height?.(260);
   try {
@@ -220,11 +231,12 @@ const onActivate = (app: Adw.Application) => {
       textBox.hexpand = true;
 
       const top = new Gtk.Label({ use_markup: true, xalign: 0 });
+      top.css_classes = ["caption"];
       top.set_markup(`<b>${escMarkup(`${item.method.toUpperCase()} ${item.url}`)}</b>`);
       top.ellipsize = Pango.EllipsizeMode.END;
 
       const bottom = new Gtk.Label({ label: formatHistoryDate(item.at), xalign: 0 });
-      bottom.css_classes = ["dim-label"];
+      bottom.css_classes = ["dim-label", "caption"];
 
       textBox.append(top);
       textBox.append(bottom);
