@@ -145,8 +145,8 @@ export default function createResponsePage(): ResponsePage {
   statusLine.append(durationLabel);
   statusLine.append(sizeLabel);
 
-  root.append(statusLine);
   root.append(notebook);
+  root.append(statusLine);
 
   const setBody = (text: string, opts: { isJson?: boolean } = {}) => {
     bodyBuffer.set_text(String(text ?? ""), -1);
@@ -177,8 +177,7 @@ export default function createResponsePage(): ResponsePage {
       else if (c >= 400 && c < 500) color = "#F44747";
       else if (c >= 500 && c < 600) color = "#C586C0";
     }
-    const t = meta.statusText ? `HTTP ${codeStr} ${meta.statusText}` : `HTTP ${codeStr}`;
-    statusLabel.set_markup(`<span foreground="${color}">●</span> <span foreground="${color}">${esc(t)}</span>`);
+    statusLabel.set_markup(`<span foreground="${color}"><b>${esc(codeStr)}</b></span>`);
 
     if (typeof meta.durationMs === "number") durationLabel.label = `${Math.round(meta.durationMs)} ms`;
     else durationLabel.label = "";

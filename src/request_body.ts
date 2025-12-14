@@ -30,16 +30,6 @@ export default function createRequestBodyPanel(options: RequestBodyPanelOptions 
     margin_end: 6,
   });
 
-  const headerRow = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-    halign: Gtk.Align.FILL,
-  });
-  headerRow.hexpand = true;
-
-  const title = new Gtk.Label({ label: "Request Body", xalign: 0 });
-  title.hexpand = true;
-
   let updatingMode = false;
   let mode: "raw" | "json" = "raw";
 
@@ -50,14 +40,14 @@ export default function createRequestBodyPanel(options: RequestBodyPanelOptions 
   const modeSwitchBox = new Gtk.Box({
     orientation: Gtk.Orientation.HORIZONTAL,
     spacing: 6,
-    halign: Gtk.Align.END,
+    halign: Gtk.Align.START,
     valign: Gtk.Align.CENTER,
+    margin_start: 8,
+    margin_end: 8,
+    margin_bottom: 6,
   });
   modeSwitchBox.append(rawLabel);
   modeSwitchBox.append(modeSwitch);
-
-  headerRow.append(title);
-  headerRow.append(modeSwitchBox);
 
   const notebook = new Gtk.Notebook({
     hexpand: true,
@@ -207,8 +197,8 @@ export default function createRequestBodyPanel(options: RequestBodyPanelOptions 
     hexpand: true,
     vexpand: true,
   });
-  bodyPage.append(headerRow);
   bodyPage.append(scrolled);
+  bodyPage.append(modeSwitchBox);
   notebook.append_page(bodyPage, new Gtk.Label({ label: "Body" }));
 
   const createKeyValueEditorPage = (opts: {
