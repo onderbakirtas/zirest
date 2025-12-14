@@ -133,6 +133,8 @@ export default function createResponsePage(): ResponsePage {
     halign: Gtk.Align.END,
     margin_top: 6,
     margin_bottom: 6,
+    margin_start: 8,
+    margin_end: 8,
   });
 
   const statusLabel = new Gtk.Label({ xalign: 0, use_markup: true, label: "" });
@@ -145,8 +147,17 @@ export default function createResponsePage(): ResponsePage {
   statusLine.append(durationLabel);
   statusLine.append(sizeLabel);
 
+  const statusBar = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    hexpand: true,
+    halign: Gtk.Align.FILL,
+    css_classes: ["toolbar"],
+  });
+  statusBar.append(new Gtk.Box({ hexpand: true }));
+  statusBar.append(statusLine);
+
   root.append(notebook);
-  root.append(statusLine);
+  root.append(statusBar);
 
   const setBody = (text: string, opts: { isJson?: boolean } = {}) => {
     bodyBuffer.set_text(String(text ?? ""), -1);
