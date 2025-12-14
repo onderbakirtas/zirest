@@ -109,7 +109,6 @@ export default function createResponsePage(): ResponsePage {
     vexpand: true,
   });
   try {
-    notebook.show_tabs = false;
     notebook.show_border = false;
   } catch {
   }
@@ -119,54 +118,21 @@ export default function createResponsePage(): ResponsePage {
   notebook.append_page(bodyScrolled, bodyTabLabel);
   notebook.append_page(headersScrolled, headersTabLabel);
 
-  let updatingTabs = false;
-  const bodyTabButton = new Gtk.ToggleButton({ label: "Body" });
-  const headersTabButton = new Gtk.ToggleButton({ label: "Headers" });
-
   const setActiveTab = (index: number) => {
-    updatingTabs = true;
     try {
       notebook.set_current_page(index);
     } catch {
       (notebook as any).page = index;
     }
-    bodyTabButton.active = index === 0;
-    headersTabButton.active = index === 1;
-    updatingTabs = false;
   };
-
-  bodyTabButton.connect("toggled", () => {
-    if (updatingTabs) return;
-    if (bodyTabButton.active) setActiveTab(0);
-    else bodyTabButton.active = true;
-  });
-  headersTabButton.connect("toggled", () => {
-    if (updatingTabs) return;
-    if (headersTabButton.active) setActiveTab(1);
-    else headersTabButton.active = true;
-  });
-
-  notebook.connect("switch-page", (_nb: any, _page: any, pageNum: number) => {
-    if (updatingTabs) return;
-    updatingTabs = true;
-    bodyTabButton.active = pageNum === 0;
-    headersTabButton.active = pageNum === 1;
-    updatingTabs = false;
-  });
-
-  const tabButtons = new Gtk.Box({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    spacing: 6,
-    halign: Gtk.Align.START,
-  });
-  tabButtons.append(bodyTabButton);
-  tabButtons.append(headersTabButton);
   setActiveTab(0);
 
   const statusLine = new Gtk.Box({
     orientation: Gtk.Orientation.HORIZONTAL,
     spacing: 10,
     halign: Gtk.Align.END,
+    margin_top: 6,
+    margin_bottom: 6,
   });
 
   const statusLabel = new Gtk.Label({ xalign: 0, use_markup: true, label: "" });
@@ -179,15 +145,7 @@ export default function createResponsePage(): ResponsePage {
   statusLine.append(durationLabel);
   statusLine.append(sizeLabel);
 
-  const tabRow = new Gtk.CenterBox({
-    orientation: Gtk.Orientation.HORIZONTAL,
-    margin_top: 6,
-    margin_bottom: 6,
-  });
-  tabRow.set_start_widget(tabButtons);
-  tabRow.set_end_widget(statusLine);
-
-  root.append(tabRow);
+  root.append(statusLine);
   root.append(notebook);
 
   const setBody = (text: string, opts: { isJson?: boolean } = {}) => {
