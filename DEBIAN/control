@@ -1,0 +1,10 @@
+Package: zirest
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: gjs, libgtk-4-1, libadwaita-1-0, libsoup-3.0-0
+Maintainer: Your Name <your.email@example.com>
+Description: Simple REST client with GTK
+ A simple REST client built with GJS and GTK4.
+ Features JSON tree view with syntax highlighting.

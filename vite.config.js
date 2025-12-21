@@ -14,7 +14,7 @@ export default defineConfig({
     rollupOptions: {
       input: 'main.ts',
       output: {
-        entryFileNames: 'main.js',
+        entryFileNames: 'bundle.js',
       },
       external: [
         new RegExp('^gi:\/\/*', 'i'),

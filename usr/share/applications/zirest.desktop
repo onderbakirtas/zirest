@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ZiREST
+Comment=Simple REST Client
+Exec=zirest
+Icon=zirest
+Categories=Development;Utility;Network;
+Terminal=false

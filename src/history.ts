@@ -7,13 +7,13 @@ export type RequestHistoryItem = {
   at: string;
 };
 
-const ByteArray = (imports as any).byteArray;
+const ByteArray = imports.byteArray;
 
 const getHistoryFile = (): Gio.File => {
   const dirPath = GLib.build_filenamev([GLib.get_user_data_dir(), "zirest"]);
   const dir = Gio.File.new_for_path(dirPath);
   try {
-    (dir as any).make_directory_with_parents(null);
+    dir.make_directory_with_parents(null);
   } catch {
   }
 
@@ -29,14 +29,14 @@ export function loadRequestHistory(): RequestHistoryItem[] {
 
     const anyFile = file as any;
     const [_ok, contents] = anyFile.load_contents(null);
-    const text = ByteArray.toString(contents);
+    const text = new (globalThis as any).TextDecoder().decode(contents);
 
-    const parsed = JSON.parse(String(text));
+    const parsed = JSON.parse(text);
     if (!Array.isArray(parsed)) return [];
 
     return parsed
       .filter((x) => x && typeof x === "object")
-      .map((x: any) => ({
+      .map((x) => ({
         method: String(x.method ?? "GET"),
         url: String(x.url ?? ""),
         at: String(x.at ?? new Date().toISOString()),

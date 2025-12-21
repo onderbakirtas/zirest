@@ -6,11 +6,11 @@
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
 		"build": "vite build",
-		"start:debug": "GTK_DEBUG=interactive gjs -m dist/main.js",
-		"start": "gjs -m dist/main.js",
+		"start:debug": "GTK_DEBUG=interactive gjs -m dist/bundle.js",
+		"start": "gjs -m dist/bundle.js",
 		"check": "tsc --noEmit",
 		"clear": "rm -rf dist",
-		"br": "vite build && gjs -m dist/main.js"
+		"br": "vite build && gjs -m dist/bundle.js"
 	},
 	"author": "Pascal Garber <pascal@mailfreun.de>",
 	"license": "MIT",
