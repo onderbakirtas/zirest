@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=ZiREST
+Name=Zirest
 Comment=Simple REST Client
 Exec=zirest
-Icon=zirest
+Icon=dev.onderb.zirest
 Categories=Development;Utility;Network;
 Terminal=false
