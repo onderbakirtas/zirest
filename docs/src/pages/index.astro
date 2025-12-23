@@ -3,33 +3,97 @@
 ---
 
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Zirest</title>
-	</head>
-	<body>
-		<main>
-			<p style="text-align:center; margin-top: 24px;">
-				<img
-					src="/usr/share/icons/hicolor/scalable/apps/dev.onderb.zirest.svg"
-					width="96"
-					alt="Zirest icon"
-				/>
-			</p>
-			<h1>Zirest</h1>
-			<p>
-				Zirest is a simple REST API desktop client built with GTK (GJS) and TypeScript.
-			</p>
-			<h2>Development</h2>
-			<p>
-				This project is built with <a href="https://vite.dev/">Vite</a> and <a href="https://www.gtk.org/">GTK</a>.
-				You can find the development documentation in the <a href="/DEVELOPMENT.md">DEVELOPMENT.md</a> file.
-			</p>
-			<h2>License</h2>
-			<p>MIT</p>
-		</main>
-	</body>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Zirest</title>
+    <style>
+      :root {
+        --background: #eee;
+        --foreground: #111;
+        --primary: #007b2f;
+        --black: #0006;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #111;
+          --foreground: #eee;
+        }
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Oxygen,
+          Ubuntu,
+          Cantarell,
+          "Open Sans",
+          "Helvetica Neue",
+          sans-serif;
+      }
+
+      main {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      body {
+        background: var(--background);
+        color: var(--foreground);
+      }
+
+      a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+        text-decoration-color: var(--foreground);
+        text-decoration-thickness: 2px;
+        text-decoration-style: solid;
+        text-underline-offset: 4px;
+        opacity: 0.8;
+      }
+
+      .logo {
+        filter: drop-shadow(0 0 1em var(--black));
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p style="text-align:center; margin-top: 24px;">
+        <img
+          src="/images/dev.onderb.zirest.svg"
+          width="96"
+          alt="Zirest icon"
+          class="logo"
+        />
+      </p>
+      <h1>Zirest</h1>
+      <p>
+        Zirest is a simple REST API desktop client built with GTK (GJS) and
+        TypeScript.
+      </p>
+      <h2>Development</h2>
+      <p>
+        This project is built with <a href="https://vite.dev/" target="_blank">Vite</a> and <a
+          href="https://www.gtk.org/" target="_blank">GTK</a
+        >. You can find the development documentation in the <a
+          href="/DEVELOPMENT.md" target="_blank">DEVELOPMENT.md</a
+        > file.
+      </p>
+      <h2>License</h2>
+      <p>MIT</p>
+    </main>
+  </body>
 </html>
