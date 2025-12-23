@@ -1,6 +1,6 @@
 {
-	"name": "@ts-for-gir-example/adw-1-hello-example",
-	"description": "Simple GJS Typescript hello-world example using Libadwaita",
+	"name": "@onderbakirtas/zirest",
+	"description": "Simple REST API desktop client with GTK",
 	"type": "module",
 	"private": true,
 	"scripts": {
@@ -12,7 +12,7 @@
 		"clear": "rm -rf dist",
 		"br": "vite build && gjs -m dist/bundle.js"
 	},
-	"author": "Pascal Garber <pascal@mailfreun.de>",
+	"author": "Onder Bakirtas <onderbakirtas@gmail.com>",
 	"license": "MIT",
 	"devDependencies": {
 		"typescript": "^5.9.3",
